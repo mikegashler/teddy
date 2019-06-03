@@ -21,11 +21,11 @@ python3 bench.py
 ```
 On my laptop, it gives this output:
 ```
-Pandas = 2.594292640686035 seconds
-Teddy = 0.00982046127319336 seconds
+Pandas = 5.522193670272827 seconds
+Teddy = 0.018588542938232422 seconds
 ```
-It looks like Teddy is more two orders of magnitude faster at a nearly identical slicing task!
-Please examine bench.py to decide for yourself whether this was really a fair comparison.
+It looks like Teddy is more than two orders of magnitude faster at a nearly identical slicing task!
+Please examine bench.py to decide for yourself how fair this comparison is.
 
 # How to use Teddy
 Sorry, I haven't written much documentation yet.
