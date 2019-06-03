@@ -16,8 +16,11 @@ Here is a comparison table:
 
 # Quick start
 Open test.py to see a bunch of examples for how to use Teddy.
-Run it to see the results:
+Run it to see the results. This command:
+'''
 python3 test.py
+'''
+produces this output:
 
 ```
 Let's make a single scalar (rank 0 tensor with a continuous value)...
