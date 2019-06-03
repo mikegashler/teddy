@@ -1,6 +1,6 @@
 # teddy
-Teddy adds meta-data to numpy arrays.
-It lets you represent tables of data that contain both continuous and categorical values.
+Teddy lets you add meta-data to numpy arrays.
+If you work with tables of data in Python, Teddy may be for you.
 It is an alternative to Pandas.
 Here is a comparison table:
 
@@ -10,17 +10,31 @@ Here is a comparison table:
 |Stores data in numpy arrays|Stores data in its own structures|
 |Attaches meta-data to any one axis|Adds meta-data to both axes|
 |Simple interface|Many features|
-|New. I wrote it.|Big community. Well-tested.|
-|Not yet documented|Well-documented, yet still hard to use|
-|Teddy bears are soft and cuddly|Pandas appear cuddly, but they're really quite mean.|
+|Newer. I wrote it.|Big community. Well-tested.|
+|Not yet documented|Well-documented, yet still cumbersome to use|
+|Teddy bears are soft and cuddly|Pandas appear cuddly, but they're really mean.|
 
-# Quick start
-Open test.py to see a bunch of examples for how to use Teddy.
-Run it to see the results. This command:
+# Benchmarks
+To see a performance benchmark, run this command:
+```
+python3 bench.py
+```
+On my laptop, it gives this output:
+```
+Pandas = 2.594292640686035 seconds
+Teddy = 0.00982046127319336 seconds
+```
+It looks like Teddy is more two orders of magnitude faster at a nearly identical slicing task!
+Please examine bench.py to decide for yourself whether this was really a fair comparison.
+
+# How to use Teddy
+Sorry, I haven't written much documentation yet.
+But you can get a pretty quick idea of how to use Teddy by examining test.py.
+It contains numerous examples for how to use it. Run this command:
 ```
 python3 test.py
 ```
-produces this output:
+to produce these results:
 
 ```
 Let's make a single scalar (rank 0 tensor with a continuous value)...
