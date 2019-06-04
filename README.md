@@ -8,11 +8,12 @@ Here is a comparison table:
 |---|---|
 |Supports tensors of any rank|Only supports 2-dimensional tables|
 |Stores data in numpy arrays|Stores data in its own structures|
-|Attaches meta-data to any one axis|Adds meta-data to both axes|
-|Simple interface|Many features|
-|Newer. I wrote it.|Big community. Well-tested.|
-|Not yet documented|Well-documented, yet still cumbersome to use|
-|Teddy bears are soft and cuddly|Pandas appear cuddly, but they're really mean.|
+|Adds meta-data to any one axis|Adds meta-data to both axes|
+|Less than 1k lines of code|Over 200k lines of code|
+|Does only one thing|Does almost everything|
+|Faster|Slower|
+|Not yet documented|Well-documented|
+|Teddy bears are soft and cuddly|Pandas appear cuddly, but they are really dangerous.|
 
 # Benchmarks
 To see a performance benchmark, run this command:
@@ -24,13 +25,16 @@ On my laptop, it gives this output:
 Pandas = 5.522193670272827 seconds
 Teddy = 0.018588542938232422 seconds
 ```
-It looks like Teddy is more than two orders of magnitude faster at a nearly identical slicing task!
-Please examine bench.py to decide for yourself how fair this comparison is.
+Teddy is more than two orders of magnitude faster at a nearly identical slicing task!
+Please examine bench.py to decide for yourself how fair this comparison really is.
+My conclusion is that Pandas is just doing too much to be helpful.
+I recommend tweaking this test to see how Teddy and Pandas compare at the operations you rely on most.
+
 
 # How to use Teddy
 Sorry, I haven't written much documentation yet.
 But you can get a pretty quick idea of how to use Teddy by examining test.py.
-It contains numerous examples for how to use it. Run this command:
+It contains many examples for how to use it. Run this command:
 ```
 python3 test.py
 ```
@@ -126,3 +130,7 @@ Let's do one with labeled rows...
          Hair:[Blonde, Brown, Red, Black]
            IQ:[   100,    85, 114,   148]]
 ```
+
+# Great, but how do I ...?
+If you are not planning to get your hands dirty and implement the functionality you need,
+then Teddy is not yet ready for you. Go learn Pandas.

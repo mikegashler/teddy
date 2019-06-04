@@ -20,7 +20,7 @@ p = pd.DataFrame({
 # Measure the cost of slicing it
 a = time.time()
 for i in range(10000):
-    q = p.iloc[1:9, 1:9]
+    q = p.iloc[i % 10]
 b = time.time()
 
 
@@ -45,7 +45,7 @@ t = td.Tensor(np.array([
 # Measure the cost of slicing it
 c = time.time()
 for i in range(10000):
-    u = t[1:9, 1:9]
+    u = t[i % 10]
 d = time.time()
 
 # Report results

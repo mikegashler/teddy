@@ -40,8 +40,8 @@ class MetaData():
         if self.axis < 0: attr = 0 # if axis is -1, the metadata applies to every axis
         if attr >= len(self.tostr): return str(val) # Continuous
         d = self.tostr[attr]
-        if d: return d[int(val)] # Categorical
-        else: return str(val) # Continuous
+        if d is None: return str(val) # Continuous
+        else: return d[int(val)] # Categorical
 
 
     # Implements the [] operator to support slicing
@@ -76,6 +76,24 @@ class MetaData():
             if self.axis > 0: return MetaData(self.tostr, self.axis - 1, self.names) # Drop first axis
             elif self.axis == 0: return MetaData([self.tostr[args]], -1, self.names[args] if self.names and len(self.names) > args else None) # List of one element
             else: return self # Nothing to change
+
+
+    def __str__(self) -> str:
+        s = "MetaData for axis " + str(self.axis) + '\n'
+        for i in range(len(self.tostr)):
+            if self.names and len(self.names) > i: s += self.names[i]
+            else: s += 'untitled'
+            s += ': '
+            d = self.tostr[i]
+            if d is None: s += 'Continuous'
+            else:
+                s += '{'
+                for j in range(len(d)):
+                    if j > 0: s += ', '
+                    s += d[j]
+                s += '}'
+            s += '\n'
+        return s
 
 
     # Returns true iff the specified attribute is continuous (as opposed to categorical)
@@ -114,9 +132,10 @@ class Tensor():
             return 0
 
 
-    # Generates a string represention of the a rank-2 tail-slice.
-    # coords should be a full-rank list of integers. The last 2 elements will be overwritten.
-    def last_two_dims_str(self, coords: List[int]) -> str:
+    # Generates a string represention of the matrix made of the last two axes in a tensor.
+    # coords should be a full-rank list of integers for the whole tensor.
+    # The last 2 elements in coords will be used as an in-place buffer.
+    def matrix_str(self, coords: List[int]) -> str:
         s = ""
         dims = len(self.data.shape)
 
@@ -184,23 +203,32 @@ class Tensor():
                     s += self.meta.to_str(i, self.data[i])
                 return s + ']'
             elif len(self.data.shape) == 2: # Matrix
-                return self.last_two_dims_str([0, 0])
+                return self.matrix_str([0, 0])
             else:
                 coords = [0] * len(self.data.shape)
                 keepgoing = True
 
                 # Visit all coordinates (not including the last 2)
                 s = ""
+                attr = 0
                 while keepgoing:
 
                     # Opening brackets
+                    bracks = 0
                     for i in range(len(coords) - 2):
-                        if coords[len(coords) - 3 - i] == 0: s += '['
+                        if coords[len(coords) - 3 - i] == 0:
+                            s += '['
+                            bracks += 1
                         else: break
-                    s += '\n'
+
+                    # # Axis label
+                    # if self.meta.axis == len(self.data.shape) - 3 - bracks:
+                    #     s += self.meta.tostr[attr] + ':'
+                    #     attr += 1
 
                     # Print the rank-2 slice
-                    s += self.last_two_dims_str(coords)
+                    s += '\n'
+                    s += self.matrix_str(coords)
 
                     # Closing brackets
                     for i in range(len(coords) - 2):
@@ -232,45 +260,61 @@ class Tensor():
 
     # Gets the value at the specified coordinates.
     # If the value is categorical, returns its enumeration as a float.
-    def get_float(self, coords: Tuple[int]) -> Any:
+    def get_float(self, coords: Tuple[int, ...]) -> Any:
         return self.data[coords]
 
 
     # Gets the value at the specified coordinates.
     # If the value is continuous, returns a string representation of its value.
-    def get_string(self, coords: Tuple[int]) -> str:
+    def get_string(self, coords: Tuple[int, ...]) -> str:
         return self.meta.to_str(coords[self.meta.axis], self.data[coords])
+
+
+    # Returns the element at the specified coordinates.
+    def get(self, coords: Tuple[int, ...]) -> Any:
+        if self.meta.is_continuous(self.meta.axis): return self.get_float(coords)
+        else: return self.get_string(coords)
 
 
     # Sets the specified continuous value at the specified coordinates
     # (Does not do any validity checking, even if the attribute is categorical.
     # If you know the right enumeration value,
     # calling this method is a bit faster than calling set_string.)
-    def set_float(self, coords: Tuple[int], val: Any) -> None:
+    def set_float(self, coords: Tuple[int, ...], val: Any) -> None:
         self.data[coords] = val
 
 
     # Sets a categorical value by string.
     # If the string does not match one of the categories specified in the meta data,
     # or if the attribute is not categorical, then this will raise an error.
-    def set_string(self, coords: Tuple[int], val: str) -> None:
+    def set_string(self, coords: Tuple[int, ...], val: str) -> None:
         d = self.meta.to_val(coords[self.meta.axis], val)
         self.set_float(coords, d)
 
 
+    # Sets the specified element to the specified value.
+    def set(self, coords: Tuple[int, ...], val: Union[float, str]) -> None:
+        if  isinstance(val, str): self.set_string(coords, val)
+        else: self.set_float(coords, val)
+
+
     # Sets a value by string, adding a new category if necessary to accomodate it.
     # Raises an error if the specified attribute is not categorical.
-    def insert_string(self, coords: Tuple[int], val: str) -> None:
+    def insert_string(self, coords: Tuple[int, ...], val: str) -> None:
         self.meta.ensure_toval()
         if self.meta.axis < 0: i = 0
         else: i = coords[self.meta.axis]
-        d = self.meta.toval[i]
-        if d:
-            if val in d:
-                self.set_float(coords, d[val])
-            else:
-                n = len(d)
-                d[val] = len(d)
-                self.set_float(coords, n)
-        else:
+        tv = self.meta.toval[i]
+        if tv is None:
             raise ValueError("Attempted to add a string to a continuous attribute")
+        else:
+            if val in tv: # If this is already an existing category...
+                self.set_float(coords, tv[val])
+            else:
+                # Add a new category
+                ts = self.meta.tostr[i]
+                if ts is None: raise RuntimeError("This should not happen")
+                n = len(ts)
+                ts[n] = val
+                self.meta.toval = [] # Force all of toval to be regeneratd. (Is this really necessary?)
+                self.set_float(coords, n)

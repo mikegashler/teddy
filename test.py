@@ -86,3 +86,55 @@ names = ["Children", "Hair", "IQ"]
 mixed2 = td.Tensor(data, td.MetaData(vals, 0, names)) # The "0" indicates that the metadata is applied to the rows (axis=0).
 print(mixed2)
 print("")
+
+print("Let's build a dataset dynamically by adding new rows one at-a-time...")
+dyn = td.Tensor(np.zeros([0, 3]), td.MetaData([{}, None, {}], 1, ['Name', 'Age', 'Occupation']))
+print(dyn)
+print("")
+
+dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
+dyn.insert_string((0, 0), 'Alice')
+dyn.set_float((0, 1), 23.)
+dyn.insert_string((0, 2), 'Computer Programmer')
+print(dyn)
+print("")
+
+dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
+dyn.insert_string((1, 0), 'Bob')
+dyn.set_float((1, 1), 32.)
+dyn.insert_string((1, 2), 'Sanitation Engineer')
+print(dyn)
+print("")
+
+dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
+dyn.insert_string((2, 0), 'Charlie')
+dyn.set_float((2, 1), 4.5)
+dyn.insert_string((2, 2), 'Student')
+print(dyn)
+print("")
+
+dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
+dyn.insert_string((3, 0), 'Dave')
+dyn.set_float((3, 1), 55)
+dyn.insert_string((3, 2), 'Sanitation Engineer')
+print(dyn)
+print("")
+
+dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
+dyn.insert_string((4, 0), 'Eric')
+dyn.set_float((4, 1), 79)
+dyn.insert_string((4, 2), 'Retired')
+print(dyn)
+print("")
+
+print("Let's change Eric's job...")
+dyn.set_string((4, 2), 'Sanitation Engineer')
+print(dyn)
+print("")
+
+print("Let's print the internal data, to make sure the same categorical value is reused for 'Sanitation Engineer'...")
+print(dyn.data)
+print("")
+
+print("Let's print the metadata, because we can...")
+print(dyn.meta)
