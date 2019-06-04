@@ -1,3 +1,7 @@
+# The contents of this file are licensed at your option under any of the following:
+# WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, and EPL1.0
+# So pick your favorite one, do whatever you want, and have fun!
+
 import numpy as np
 from typing import Union, Dict, Optional, Tuple, Any, List
 

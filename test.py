@@ -138,3 +138,14 @@ print("")
 
 print("Let's print the metadata, because we can...")
 print(dyn.meta)
+
+print("Let's convert a continuous attribute to a categorical one...")
+convert_me = td.Tensor(np.array([[0.1,1],[0.2,0],[0.3,1],[0.4,0]]), td.MetaData([None, None], 1))
+print("Before:\n" + str(convert_me))
+convert_me.meta.tostr[1] = {0:'Cold', 1:'Hot'}
+convert_me.meta.toval = [] # Forces Teddy to regenerate toval
+print("After:\n" + str(convert_me))
+
+print("And let's demonstrate that you can still perform numpy operations on the raw data...")
+convert_me.data[:,0] *= 2
+print(convert_me)

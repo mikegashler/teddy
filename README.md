@@ -129,8 +129,85 @@ Let's do one with labeled rows...
 [    Children:[     0,     3,   2,     0]
          Hair:[Blonde, Brown, Red, Black]
            IQ:[   100,    85, 114,   148]]
+
+
+Let's build a dataset dynamically by adding new rows one at-a-time...
+  N A O
+
+
+    Name   Age           Occupation
+[[Alice, 23.0, Computer Programmer]]
+
+
+    Name   Age           Occupation
+[[Alice, 23.0, Computer Programmer]
+ [  Bob, 32.0, Sanitation Engineer]]
+
+
+      Name   Age           Occupation
+[[  Alice, 23.0, Computer Programmer]
+ [    Bob, 32.0, Sanitation Engineer]
+ [Charlie,  4.5,             Student]]
+
+
+      Name   Age           Occupation
+[[  Alice, 23.0, Computer Programmer]
+ [    Bob, 32.0, Sanitation Engineer]
+ [Charlie,  4.5,             Student]
+ [   Dave, 55.0, Sanitation Engineer]]
+
+
+      Name   Age           Occupation
+[[  Alice, 23.0, Computer Programmer]
+ [    Bob, 32.0, Sanitation Engineer]
+ [Charlie,  4.5,             Student]
+ [   Dave, 55.0, Sanitation Engineer]
+ [   Eric, 79.0,             Retired]]
+
+
+Let's change Eric's job...
+      Name   Age           Occupation
+[[  Alice, 23.0, Computer Programmer]
+ [    Bob, 32.0, Sanitation Engineer]
+ [Charlie,  4.5,             Student]
+ [   Dave, 55.0, Sanitation Engineer]
+ [   Eric, 79.0, Sanitation Engineer]]
+
+
+Let's print the internal data, to make sure the same categorical value is reused for 'Sanitation Engineer'...
+[[ 0.  23.   0. ]
+ [ 1.  32.   1. ]
+ [ 2.   4.5  2. ]
+ [ 3.  55.   1. ]
+ [ 4.  79.   1. ]]
+
+Let's print the metadata, because we can...
+MetaData for axis 1
+Name: {Alice, Bob, Charlie, Dave, Eric}
+Age: Continuous
+Occupation: {Computer Programmer, Sanitation Engineer, Student, Retired}
+
+Let's convert a continuous attribute to a categorical one...
+Before:
+[[0.1, 1.0]
+ [0.2, 0.0]
+ [0.3, 1.0]
+ [0.4, 0.0]]
+
+After:
+[[0.1,  Hot]
+ [0.2, Cold]
+ [0.3,  Hot]
+ [0.4, Cold]]
+
+And let's demonstrate that you can still perform numpy operations on the raw data...
+[[0.2,  Hot]
+ [0.4, Cold]
+ [0.6,  Hot]
+ [0.8, Cold]]
+
 ```
 
-# Great, but how do I ...?
-If you are not planning to get your hands dirty and implement the functionality you need,
-then Teddy is not yet ready for you. Go learn Pandas.
+# Great, but Pandas can do XYZ. How do I do that in Teddy?
+If you want a library that is already complete, choose Pandas.
+Teddy is for people who enjoy hacking on low-level internal implementations.
