@@ -6,8 +6,9 @@ Here is a comparison table:
 
 |Teddy Tensor|Pandas DataFrame|
 |---|---|
+|Stores data in a uniform-type numpy array|Stores data in custom Pandas data structures|
+|Stores categorical values as enumerations|Stores categorical values as strings|
 |Supports tensors of any rank|Only supports 2-dimensional tables|
-|Stores data in numpy arrays|Stores data in its own structures|
 |Adds meta-data to any one axis|Adds meta-data to both axes|
 |Less than 1k lines of code|Over 200k lines of code|
 |Does only one thing|Does almost everything|
@@ -27,7 +28,7 @@ Teddy = 0.018588542938232422 seconds
 ```
 Teddy is more than two orders of magnitude faster at a nearly identical slicing task!
 Please examine bench.py to decide for yourself how fair this comparison really is.
-My conclusion is that Pandas is just doing too much to be helpful.
+My conclusion is that Pandas has just grown more complex than is really helpful.
 I recommend tweaking this test to see how Teddy and Pandas compare at the operations you rely on most.
 
 
@@ -208,6 +209,13 @@ And let's demonstrate that you can still perform numpy operations on the raw dat
 
 ```
 
-# Great, but Pandas can do XYZ. How do I do that in Teddy?
-If you want a library that is already complete, choose Pandas.
-Teddy is for people who enjoy hacking on low-level internal implementations.
+# FAQ
+1 **Pandas can do XYZ. How do I do that in Teddy?** Chances are pretty good that the functionality you want has not yet been implemented in Teddy. If you want a library that is already complete, Pandas is probably for you. Teddy is for people who like to hack on the data structures they use.
+
+2 **Why don't you store string values in the data table like everyone else?** String comparison is much slower than number comparison. Also, following string refs requires more page-flipping, which destroys cache coherency. Basically, that's just not a great way to store data. Teddy deliberately avoids doing that by storing the raw data as floats, and doing string look-ups only when the user is ready to see a string value.
+
+3 **When do you plan on writing complete documentation?** I'm not really very invested in this project. I was just annoyed at Pandas one day, so I took a weekend to code up an alternative. Please feel free to take it over if you like.
+
+4 **How do you handling missing values?** Good question. Someone needs to figure that out.
+
+5 **This code is so awesome! Thank you. Can I send you a bunch of money?** Keep your money. Pay it forward.

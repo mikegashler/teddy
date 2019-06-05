@@ -1,8 +1,9 @@
-# The contents of this file are licensed at your option under any of the following:
+# The contents of this file are licensed at your option under any or all of the following:
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, and EPL1.0
 # So pick your favorite one, do whatever you want, and have fun!
 
 import numpy as np
+import scipy.io.arff as arff
 from typing import Union, Dict, Optional, Tuple, Any, List
 
 
@@ -11,7 +12,11 @@ class MetaData():
     # tostr is a list of dictionaries that map sequential integers starting with 0 to string values.
     # axis specifies which axis this metadata is bound to.
     # names is a list of strings that describe each attribute.
-    def __init__(self, tostr: List[Optional[Dict[int, str]]] = [], axis: int = -1, names: Optional[List[str]] = None) -> None:
+    def __init__(self,
+        tostr: List[Optional[Dict[int, str]]] = [],
+        axis: int = -1,
+        names: Optional[List[str]] = None
+    ) -> None:
         self.tostr: List[Optional[Dict[int, str]]] = tostr
         self.toval: List[Optional[Dict[str, int]]] = []
         if axis < 0 and len(tostr) > 1: raise ValueError("Multiple string maps were provided, but no axis was specified.")
@@ -119,16 +124,30 @@ class Tensor():
 
     # data is a float or numpy array
     # meta is a MetaData object that describes the data
-    def __init__(self, data: Any, meta: Optional[MetaData] = None) -> None:
+    def __init__(self,
+        data: Any,
+        meta: Optional[MetaData] = None
+    ) -> None:
         self.data: Any = data
         self.meta = meta or MetaData([], min(self.rank() - 1, 1))
-        meta_axis_size = 1 if self.meta.axis < 0 else self.data.shape[self.meta.axis]
-        if len(self.meta.tostr) > meta_axis_size:
-            raise ValueError(str(len(self.meta.tostr)) + " string maps were provided for axis " + str(self.meta.axis) + ", which only has a size of " + str(meta_axis_size))
 
+        # Check that the data and metadata line up
+        if self.meta.axis >= 0:
+            if not isinstance(self.data, np.ndarray):
+                raise ValueError("Data has no axes, but caller specified to attach meta data to axis " + str(self.meta.axis))
+            if self.meta.axis >= len(self.data.shape):
+                raise ValueError("Data has only " + str(len(self.data.shape)) + " axes, but caller specified to attach meta data to axis " + str(self.meta.axis))
+        attr_count = 1 if self.meta.axis < 0 else self.data.shape[self.meta.axis]
+        if len(self.meta.tostr) > attr_count:
+            raise ValueError(str(len(self.meta.tostr)) + " string maps were provided for axis " + str(self.meta.axis) + ", which only has a size of " + str(attr_count))
+
+
+    # This overloads the [] operator
     def __getitem__(self, args) -> 'Tensor': # type: ignore
         return Tensor(self.data[args], self.meta[args])
 
+
+    # Returns the number of axes in this tensor
     def rank(self) -> int:
         if isinstance(self.data, np.ndarray):
             return len(self.data.shape)
@@ -322,3 +341,21 @@ class Tensor():
                 ts[n] = val
                 self.meta.toval = [] # Force all of toval to be regeneratd. (Is this really necessary?)
                 self.set_float(coords, n)
+
+
+# Loads an ARFF file. Returns a Tensor.
+def load_arff(filename: str) -> Tensor:
+    data, meta = arff.loadarff(filename)
+    tostr: List[Optional[Dict[int, str]]] = []
+    for i in meta.types():
+        if i == 'nominal': tostr.append({})
+        else: tostr.append(None)
+    md = MetaData(tostr, 1, meta.names())
+    t = Tensor(np.zeros((data.shape[0], len(data[0]))), md)
+    for row in range(t.data.shape[0]):
+        for col in range(t.data.shape[1]):
+            if t.meta.is_continuous(col):
+                t.data[row, col] = data[row][col]
+            else:
+                t.insert_string((row, col), data[row][col].decode('us-ascii'))
+    return t

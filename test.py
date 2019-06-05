@@ -149,3 +149,6 @@ print("After:\n" + str(convert_me))
 print("And let's demonstrate that you can still perform numpy operations on the raw data...")
 convert_me.data[:,0] *= 2
 print(convert_me)
+
+t = td.load_arff("/home/mike/data/class/mushroom.arff")
+print(t)
