@@ -210,12 +210,14 @@ And let's demonstrate that you can still perform numpy operations on the raw dat
 ```
 
 # FAQ
-1 **Pandas can do XYZ. How do I do that in Teddy?** Chances are pretty good that the functionality you want has not yet been implemented in Teddy. If you want a library that is already complete, Pandas is probably for you. Teddy is for people who like to hack on the data structures they use.
+1. **Pandas can do XYZ. How do I do that in Teddy?** Chances are pretty good that the functionality you want has not yet been implemented in Teddy. If you want a library that is already complete, Pandas is probably for you. Teddy is for people who like to hack on the data structures they use.
 
-2 **Why don't you store string values in the data table like everyone else?** String comparison is much slower than number comparison. Also, following string refs requires more page-flipping, which destroys cache coherency. Basically, that's just not a great way to store data. Teddy deliberately avoids doing that by storing the raw data as floats, and doing string look-ups only when the user is ready to see a string value.
+2. **Why don't you store string values in the data table like everyone else?** String comparison is much slower than number comparison. Also, following string refs requires more page-flipping, which destroys cache coherency. Basically, that's just not a great way to store data. Teddy deliberately avoids doing that by storing the raw data as floats, and doing string look-ups only when the user is ready to see a string value.
 
-3 **When do you plan on writing complete documentation?** I'm not really very invested in this project. I was just annoyed at Pandas one day, so I took a weekend to code up an alternative. Please feel free to take it over if you like.
+3. **When do you plan on writing complete documentation?** I'm not really very invested in this project. I was just annoyed at Pandas one day, so I took a weekend to code up an alternative. Please feel free to take it over if you like.
 
-4 **How do you handling missing values?** Good question. Someone needs to figure that out.
+4. **How do you handle missing values?** Good question. Someone needs to figure that out.
 
-5 **This code is so awesome! Thank you. Can I send you a bunch of money?** Keep your money. Pay it forward.
+5. **How do you handle date/time attributes?** Good question. Someone needs to figure that out.
+
+6. **This code is so awesome! Can I send you a bunch of money?** Keep your money. Pay it forward.
