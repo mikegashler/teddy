@@ -150,5 +150,33 @@ print("And let's demonstrate that you can still perform numpy operations on the 
 convert_me.data[:,0] *= 2
 print(convert_me)
 
-t = td.load_arff("/home/mike/data/class/mushroom.arff")
-print(t)
+print("Let's demonstrate normalizing...")
+data = np.array([
+    [0., 1, 20],
+    [2., 2, 30],
+    [4., 2, 20],
+    [6, 2, 40],
+    [8, 2, 30],
+    [10., 0, 21]])
+vals =  [
+            None,                              # Continuous attribute
+            {0: "Red", 1: "Green", 2: "Blue"}, # Ternary (3-category) attribute
+            None,                              # Continuous attribute
+        ]
+names = ["Num", "Color", "Val"]
+normalize_me = td.Tensor(data, td.MetaData(vals, 1, names))
+print("Before:")
+print(normalize_me)
+normalize_me.normalize()
+print("After:")
+print(normalize_me)
+
+print("Let's demonstrate one-hot encoding...")
+print("Before:")
+print(mixed1)
+print("After:")
+print(mixed1.one_hot())
+
+# print("Let's load a dataset from ARFF format...")
+# t = td.load_arff("/home/mike/data/class/mushroom.arff")
+# print(t)

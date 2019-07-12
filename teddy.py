@@ -115,7 +115,7 @@ class MetaData():
     # Returns the number of categories in a categorical attribute
     def categories(self, attr: int) -> int:
         if self.axis < 0: attr = 0 # if axis is -1, the metadata applies to everything
-        return len(tostr[attr]) # type: ignore
+        return len(self.tostr[attr]) # type: ignore
 
 
 
@@ -341,6 +341,75 @@ class Tensor():
                 ts[n] = val
                 self.meta.toval = [] # Force all of toval to be regeneratd. (Is this really necessary?)
                 self.set_float(coords, n)
+
+
+    # Normalizes (in place) all of the non-categorical attributes to fall in the range [0., 1.]
+    def normalize(self) -> None:
+        for i in range(self.data.shape[self.meta.axis]):
+            if self.meta.is_continuous(i):
+                if not self.meta.names is None:
+                    self.meta.names[i] = 'n_' + self.meta.names[i]
+                slice_list_in: List[Any] = [slice(None)] * len(self.data.shape)
+                slice_list_in[self.meta.axis] = i
+                lo = self.data[tuple(slice_list_in)].min()
+                hi = self.data[tuple(slice_list_in)].max()
+                self.data[tuple(slice_list_in)] -= lo
+                self.data[tuple(slice_list_in)] *= (1.0 / (hi - lo))
+
+
+    # Encodes all of the categorical attributes with a one-hot encoding
+    def one_hot(self) -> "Tensor":
+        if self.meta.axis < 0:
+            raise NotImplementedError("Sorry, I haven't thought about this case yet")
+
+        # Build list of new attribute names, and count the new size
+        newnames = []
+        newsize = 0
+        for i in range(self.data.shape[self.meta.axis]):
+            if self.meta.is_continuous(i):
+                newsize += 1
+                if self.meta.names is None:
+                    newnames.append('attr' + str(i))
+                else:
+                    newnames.append(self.meta.names[i])
+            else:
+                newsize += self.meta.categories(i)
+                for j in range(self.meta.categories(i)):
+                    if self.meta.names is None:
+                        newnames.append('val' + str(j) + '_attr' + str(i))
+                    else:
+                        newnames.append(self.meta.tostr[i][j] + '_' + self.meta.names[i]) # type: ignore
+
+        # Allocate buffer for new data
+        newshape = self.data.shape[:self.meta.axis] + (newsize,) + self.data.shape[self.meta.axis + 1:]
+        newdata = np.zeros(newshape)
+
+        # Transform the data
+        o = 0
+        for i in range(self.data.shape[self.meta.axis]):
+            slice_list_in: List[Any] = [slice(None)] * len(self.data.shape)
+            slice_list_in[self.meta.axis] = i
+            if self.meta.is_continuous(i):
+                # Copy straight over
+                slice_list_out: List[Any] = [slice(None)] * len(self.data.shape)
+                slice_list_out[self.meta.axis] = o
+                newdata[tuple(slice_list_out)] = self.data[tuple(slice_list_in)]
+                o += 1
+            else:
+                # Convert to a one-hot encoding
+                olddata = self.data[tuple(slice_list_in)] # isolate just the relevant attribute
+                it = np.nditer(olddata, flags=['multi_index']) # iterate over all the elements
+                while not it.finished:
+                    categorical_value = int(it[0]) # get the categorical value
+                    if categorical_value >= 0 and categorical_value < self.meta.categories(i): # if the value is valid
+                        hotindex = it.multi_index[:self.meta.axis] + (o + categorical_value,) + it.multi_index[self.meta.axis + 1:]
+                        newdata[hotindex] = 1.
+                    it.iternext()
+                o += self.meta.categories(i)
+
+        # Make a tensor with the transformed data
+        newmeta = MetaData([None] * newsize, self.meta.axis, newnames)
+        return Tensor(newdata, newmeta)
 
 
 # Loads an ARFF file. Returns a Tensor.

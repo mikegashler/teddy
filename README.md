@@ -207,6 +207,38 @@ And let's demonstrate that you can still perform numpy operations on the raw dat
  [0.6,  Hot]
  [0.8, Cold]]
 
+Let's demonstrate normalizing...
+Before:
+    Num  Color   Val
+[[ 0.0, Green, 20.0]
+ [ 2.0,  Blue, 30.0]
+ [ 4.0,  Blue, 20.0]
+ [ 6.0,  Blue, 40.0]
+ [ 8.0,  Blue, 30.0]
+ [10.0,   Red, 21.0]]
+
+After:
+                n_Num  Color n_Val
+[[               0.0, Green,  0.0]
+ [               0.2,  Blue,  0.5]
+ [               0.4,  Blue,  0.0]
+ [0.6000000000000001,  Blue,  1.0]
+ [               0.8,  Blue,  0.5]
+ [               1.0,   Red, 0.05]]
+
+Let's demonstrate one-hot encoding...
+Before:
+   Gender Shoe  Favori   Age
+[[  Male, 12.5, Green, 18.0]
+ [Female,  7.0,  Blue, 27.0]
+ [  Male,  8.5,   Red, 18.0]]
+
+After:
+  Male Fema Shoe  Red_ Gree Blue   Age
+[[1.0, 0.0, 12.5, 0.0, 1.0, 0.0, 18.0]
+ [0.0, 1.0,  7.0, 0.0, 0.0, 1.0, 27.0]
+ [1.0, 0.0,  8.5, 1.0, 0.0, 0.0, 18.0]]
+
 ```
 
 # FAQ
