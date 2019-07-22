@@ -1,7 +1,7 @@
 # teddy
 Teddy lets you add meta-data to numpy arrays.
 If you work with tables of data in Python, Teddy may be for you.
-It is an alternative to Pandas.
+It is a light-weight alternative to Pandas.
 Here is a comparison table:
 
 |Teddy Tensor|Pandas DataFrame|

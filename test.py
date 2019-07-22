@@ -167,7 +167,7 @@ names = ["Num", "Color", "Val"]
 normalize_me = td.Tensor(data, td.MetaData(vals, 1, names))
 print("Before:")
 print(normalize_me)
-normalize_me.normalize()
+normalize_me.normalize_inplace()
 print("After:")
 print(normalize_me)
 

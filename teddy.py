@@ -2,9 +2,10 @@
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, and EPL1.0
 # So pick your favorite one, do whatever you want, and have fun!
 
+from typing import Union, Dict, Optional, Tuple, Any, List
 import numpy as np
 import scipy.io.arff as arff
-from typing import Union, Dict, Optional, Tuple, Any, List
+import copy
 
 
 class MetaData():
@@ -22,6 +23,11 @@ class MetaData():
         if axis < 0 and len(tostr) > 1: raise ValueError("Multiple string maps were provided, but no axis was specified.")
         self.axis = axis
         self.names = names
+
+
+    # Returns a deep copy of this object
+    def deepcopy(self) -> "MetaData":
+        return MetaData(copy.deepcopy(self.tostr), self.axis, copy.deepcopy(self.names))
 
 
     # Lazily build the string-to-int dictionary
@@ -140,6 +146,11 @@ class Tensor():
         attr_count = 1 if self.meta.axis < 0 else self.data.shape[self.meta.axis]
         if len(self.meta.tostr) > attr_count:
             raise ValueError(str(len(self.meta.tostr)) + " string maps were provided for axis " + str(self.meta.axis) + ", which only has a size of " + str(attr_count))
+
+
+    # Returns a deep copy of this tensor
+    def deepcopy(self) -> "Tensor":
+        return Tensor(np.copy(self.data), self.meta.deepcopy())
 
 
     # This overloads the [] operator
@@ -344,7 +355,7 @@ class Tensor():
 
 
     # Normalizes (in place) all of the non-categorical attributes to fall in the range [0., 1.]
-    def normalize(self) -> None:
+    def normalize_inplace(self) -> None:
         for i in range(self.data.shape[self.meta.axis]):
             if self.meta.is_continuous(i):
                 if not self.meta.names is None:
@@ -355,6 +366,13 @@ class Tensor():
                 hi = self.data[tuple(slice_list_in)].max()
                 self.data[tuple(slice_list_in)] -= lo
                 self.data[tuple(slice_list_in)] *= (1.0 / (hi - lo))
+
+
+    # Normalizes all of the non-categorical attributes to fall in the range [0., 1.]
+    def normalize(self) -> "Tensor":
+        c = self.deepcopy()
+        c.normalize_inplace()
+        return c
 
 
     # Encodes all of the categorical attributes with a one-hot encoding
