@@ -18,10 +18,34 @@ p = pd.DataFrame({
 	})
 
 # Measure the cost of slicing it
-a = time.time()
+p_before = time.time()
 for i in range(10000):
     q = p.iloc[i % 10]
-b = time.time()
+p_after = time.time()
+
+
+# Make a structured Numpy array with mixed types
+n = np.array([
+	('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+	('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+	('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+	('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+	('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+	('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+	('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+	('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+	('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+	('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+	], dtype = [('c0', 'S10'), ('c1', float), ('c2', 'S10'), ('c3', float),
+				('c4', 'S10'), ('c5', float), ('c6', 'S10'), ('c7', float),
+				('c8', 'S10'), ('c9', float)])
+
+# Measure the cost of slicing it
+n_before = time.time()
+for i in range(10000):
+    z = n[i % 10]
+n_after = time.time()
+
 
 
 # Make a Teddy Tensor with mixed types
@@ -43,14 +67,12 @@ t = td.Tensor(np.array([
     1, ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']))
 
 # Measure the cost of slicing it
-c = time.time()
+t_before = time.time()
 for i in range(10000):
     u = t[i % 10]
-d = time.time()
+t_after = time.time()
 
 # Report results
-print("Pandas = " + str(b - a) + " seconds")
-print("Teddy = " + str(d - c) + " seconds")
-
-# print(p[1:9])
-# print(t[1:9])
+print("Pandas = " + str(p_after - p_before) + " seconds")
+print("Structured Numpy = " + str(n_after - n_before) + " seconds")
+print("Teddy = " + str(t_after - t_before) + " seconds")

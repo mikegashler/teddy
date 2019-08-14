@@ -384,7 +384,7 @@ class Tensor():
         newnames = []
         newsize = 0
         for i in range(self.data.shape[self.meta.axis]):
-            if self.meta.is_continuous(i):
+            if self.meta.is_continuous(i) or self.meta.categories(i) == 2:
                 newsize += 1
                 if self.meta.names is None:
                     newnames.append('attr' + str(i))
@@ -407,7 +407,7 @@ class Tensor():
         for i in range(self.data.shape[self.meta.axis]):
             slice_list_in: List[Any] = [slice(None)] * len(self.data.shape)
             slice_list_in[self.meta.axis] = i
-            if self.meta.is_continuous(i):
+            if self.meta.is_continuous(i) or self.meta.categories(i) == 2:
                 # Copy straight over
                 slice_list_out: List[Any] = [slice(None)] * len(self.data.shape)
                 slice_list_out[self.meta.axis] = o
