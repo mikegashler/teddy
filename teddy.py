@@ -2,10 +2,11 @@
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, and EPL1.0
 # So pick your favorite one, do whatever you want, and have fun!
 
-from typing import Union, Dict, Optional, Tuple, Any, List
+from typing import Union, Dict, Optional, Tuple, Any, List, Iterable
 import numpy as np
 import scipy.io.arff as arff
 import copy
+import json
 
 
 class MetaData():
@@ -430,6 +431,39 @@ class Tensor():
         return Tensor(newdata, newmeta)
 
 
+# Initializes values from any 2d array-like structure.
+# Assumes the first row contains column names.
+# Determines data types from whatever is in the second row.
+def init_2d(data: Iterable[Iterable[Any]]) -> Tensor:
+    tostr: List[Optional[Dict[int, str]]] = []
+    names: List[str] = []
+    r0 = data[0]
+    r1 = data[1]
+    for col in range(len(r0)):
+        colname = r0[col]
+        if not isinstance(colname, str):
+            raise ValueError('Expected the first row to contain column names as strings')
+        names.append(colname)
+        el = r1[col]
+        if isinstance(el, str): tostr.append({})
+        else: tostr.append(None)
+    t = Tensor(np.zeros((len(data) - 1, len(names))), MetaData(tostr, 1, names))
+    for row in range(len(data) - 1):
+        r = data[row + 1]
+        if len(r) != len(names):
+            raise ValueError("Row " + str(row) + " has " + str(len(r)) + " values. Expected " + str(len(names)))
+        for col in range(len(r)):
+            if t.meta.is_continuous(col):
+                if isinstance(r[col], str):
+                    raise ValueError('Expected a numerical value at (' + str(row) + ',' + str(col) + ')')
+                t.data[row, col] = r[col]
+            else:
+                if not isinstance(r[col], str):
+                    raise ValueError('Expected a string value at (' + str(row) + ',' + str(col) + ')')
+                t.insert_string((row, col), r[col])
+    return t
+
+
 # Loads an ARFF file. Returns a Tensor.
 def load_arff(filename: str) -> Tensor:
     data, meta = arff.loadarff(filename)
@@ -437,12 +471,41 @@ def load_arff(filename: str) -> Tensor:
     for i in meta.types():
         if i == 'nominal': tostr.append({})
         else: tostr.append(None)
-    md = MetaData(tostr, 1, meta.names())
-    t = Tensor(np.zeros((data.shape[0], len(data[0]))), md)
+    t = Tensor(np.zeros((data.shape[0], len(data[0]))), MetaData(tostr, 1, meta.names()))
     for row in range(t.data.shape[0]):
         for col in range(t.data.shape[1]):
             if t.meta.is_continuous(col):
                 t.data[row, col] = data[row][col]
             else:
                 t.insert_string((row, col), data[row][col].decode('us-ascii'))
+    return t
+
+
+# Loads from a JSON format that is a list of tuples that redundantly repeat meta-data for every field
+def load_json_1(filename: str) -> Tensor:
+
+    # Load the file
+    filecontents = None
+    with open(filename, mode='rb') as file:
+        filecontents = file.read()
+    obs = json.loads(filecontents)
+
+    # Extract metadata from the first row
+    tostr: List[Optional[Dict[int, str]]] = []
+    names: List[str] = []
+    for k in obs[0]:
+        if isinstance(obs[0][k], str): tostr.append({})
+        else: tostr.append(None)
+        names.append(k)
+
+    # Extract all the data
+    t = Tensor(np.zeros((len(obs), len(names))), MetaData(tostr, 1, names))
+    row = 0
+    for ob in obs:
+        col = 0
+        for k in ob:
+            if t.meta.is_continuous(col): t.data[row, col] = ob[k]
+            else: t.insert_string((row, col), ob[k])
+            col += 1
+        row += 1
     return t
