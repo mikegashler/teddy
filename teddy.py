@@ -2,7 +2,7 @@
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, and EPL1.0
 # So pick your favorite one, do whatever you want, and have fun!
 
-from typing import Union, Dict, Optional, Tuple, Any, List, Iterable
+from typing import Union, Dict, Optional, Tuple, Any, List
 import numpy as np
 import scipy.io.arff as arff
 import copy
@@ -431,10 +431,10 @@ class Tensor():
         return Tensor(newdata, newmeta)
 
 
-# Initializes values from any 2d array-like structure.
+# Initializes values from a list of tuples.
 # Assumes the first row contains column names.
 # Determines data types from whatever is in the second row.
-def init_2d(data: Iterable[Iterable[Any]]) -> Tensor:
+def init_2d(data: List[Tuple[Any,...]]) -> Tensor:
     tostr: List[Optional[Dict[int, str]]] = []
     names: List[str] = []
     r0 = data[0]

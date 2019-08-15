@@ -4,7 +4,7 @@ import teddy as td
 import pandas as pd
 import time
 
-def pd_time_row_access(n_slices):
+def pd_time_row_access(n_slices: int) -> float:
     x = pd.DataFrame({
         'c0': pd.Categorical(list('ababababab'), categories=['a', 'b'], ordered=True),
         'c1': [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9],
@@ -22,7 +22,7 @@ def pd_time_row_access(n_slices):
         y = x.iloc[i % 10]
     return time.time() - t
 
-def pd_time_col_access(n_slices):
+def pd_time_col_access(n_slices: int) -> float:
     x = pd.DataFrame({
         'c0': pd.Categorical(list('ababababab'), categories=['a', 'b'], ordered=True),
         'c1': [0.0, 1.1, 2.2, 3.3, 4.4, 5.5, 6.6, 7.7, 8.8, 9.9],
@@ -41,7 +41,7 @@ def pd_time_col_access(n_slices):
         y = x[c[i % 10]]
     return time.time() - t
 
-def np_time_row_access(n_slices):
+def np_time_row_access(n_slices: int) -> float:
     x = np.array([
         ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
         ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
@@ -70,7 +70,7 @@ def np_time_row_access(n_slices):
         y = x[i % 10]
     return time.time() - t
 
-def np_time_col_access(n_slices):
+def np_time_col_access(n_slices: int) -> float:
     x = np.array([
         ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
         ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
@@ -100,36 +100,26 @@ def np_time_col_access(n_slices):
         y = x[c[i % 10]]
     return time.time() - t
 
-def td_time_row_access(n_slices):
-    x = td.Tensor(np.array([
-        [0, 0.0, 0, 0.0, 0, 0.0, 0, 0.0, 0, 0.0],
-        [1, 1.1, 1, 1.1, 1, 1.1, 1, 1.1, 1, 1.1],
-        [0, 2.2, 0, 2.2, 0, 2.2, 0, 2.2, 0, 2.2],
-        [1, 3.3, 1, 3.3, 1, 3.3, 1, 3.3, 1, 3.3],
-        [0, 4.4, 0, 4.4, 0, 4.4, 0, 4.4, 0, 4.4],
-        [1, 5.5, 1, 5.5, 1, 5.5, 1, 5.5, 1, 5.5],
-        [0, 6.6, 0, 6.6, 0, 6.6, 0, 6.6, 0, 6.6],
-        [1, 7.7, 1, 7.7, 1, 7.7, 1, 7.7, 1, 7.7],
-        [0, 8.8, 0, 8.8, 0, 8.8, 0, 8.8, 0, 8.8],
-        [1, 9.9, 1, 9.9, 1, 9.9, 1, 9.9, 1, 9.9],
-    ]), td.MetaData([
-        {0:'a', 1:'b'},
-        None,
-        {0:'a', 1:'b'},
-        None,
-        {0:'a', 1:'b'},
-        None,
-        {0:'a', 1:'b'},
-        None,
-        {0:'a', 1:'b'},
-        None
-    ], 1, ['c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'])).data
+def td_time_row_access(n_slices: int) -> float:
+    x = td.init_2d([
+        ('c0', 'c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9'),
+        ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+        ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+        ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+        ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+        ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+        ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+        ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+        ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+        ('a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0, 'a', 0.0),
+        ('b', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1, 'a', 1.1),
+    ]).data
     t = time.time()
     for i in range(n_slices):
         y = x[i % 10]
     return time.time() - t
 
-def td_time_col_access(n_slices):
+def td_time_col_access(n_slices: int) -> float:
     x = td.Tensor(np.array([
         [0, 0.0, 0, 0.0, 0, 0.0, 0, 0.0, 0, 0.0],
         [1, 1.1, 1, 1.1, 1, 1.1, 1, 1.1, 1, 1.1],
