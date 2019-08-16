@@ -177,6 +177,22 @@ print(mixed1)
 print("After:")
 print(mixed1.one_hot())
 
+print("Let's test sorting...")
+t = td.init_2d([
+	('num', 'color', 'val'),
+	(    3,  'blue',  3.14),
+	(    7,   'red',  1.01),
+	(    4, 'green',  88.8),
+	])
+print("Before:")
+print(t)
+print("Sorted by num:")
+print(t.sort((-1, 0)))
+print("Sorted by val:")
+print(t.sort((-1, 2)))
+print("Sorted by row 0: (deliberately non-sensical)")
+print(t.sort((0, -1)))
+
 # print("Let's load a dataset from ARFF format...")
 # t = td.load_arff("/home/mike/data/class/mushroom.arff")
 # print(t)

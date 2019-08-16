@@ -31,6 +31,23 @@ class MetaData():
         return MetaData(copy.deepcopy(self.tostr), self.axis, copy.deepcopy(self.names))
 
 
+    # Returns metadata sorted with the specified order
+    def sort(self, order: List[int]) -> "MetaData":
+
+        # Make sure all of the indexes contain specified data
+        max_index = max(order)
+        while len(self.tostr) <= max_index:
+            self.tostr.append(None)
+        if not self.names: self.names = []
+        while len(self.names) <= max_index:
+            self.names.append('attr' + str(len(self.names)))
+
+        # Make the new metadata
+        newtostr = [self.tostr[i] for i in order]
+        newnames = [self.names[i] for i in order]
+        return MetaData(newtostr, self.axis, newnames)
+
+
     # Lazily build the string-to-int dictionary
     def ensure_toval(self) -> None:
         if self.toval == []:
@@ -430,6 +447,88 @@ class Tensor():
         newmeta = MetaData([None] * newsize, self.meta.axis, newnames)
         return Tensor(newdata, newmeta)
 
+    # coords should have the same size as the shape of this tensor.
+    # coords should contain exactly one element equal to -1.
+    # The -1 indicates the axis to sort along.
+    # Returns a tensor sorted along the axis specified with a -1 in coords.
+    def sort(self, coords: Tuple[int, ...]) -> "Tensor":
+        if len(coords) != len(self.data.shape):
+            raise ValueError('Expected coords to contain ' + str(len(self.data.shape)) + ' elements, with one -1 to indicate the axis to sort on.')
+        slice_list_in: List[Any] = []
+        axis = -1
+        for i in range(len(coords)):
+            if coords[i] == -1:
+                slice_list_in.append(slice(None))
+                if axis > -1: raise ValueError('Expected only one value in coords to contain -1')
+                axis = i
+            else:
+                slice_list_in.append(coords[i])
+        sort_me = self.data[tuple(slice_list_in)]
+        sort_order = np.argsort(sort_me, 0)
+        slice_list_out: List[Any] = []
+        for i in range(len(coords)):
+            if coords[i] == -1:
+                slice_list_out.append(sort_order)
+            else:
+                slice_list_out.append(slice(None))
+        newdata = self.data[slice_list_out]
+        if axis == self.meta.axis:
+            newmeta = self.meta.sort(sort_order.tolist())
+        else:
+            newmeta = self.meta
+        return Tensor(newdata, newmeta)
+
+
+    # # Assumes self is a 2d tensor with metadata on axis 1.
+    # # Returns an tensor with the dates in sorted order with exactly one row for each day.
+    # # Missing categorical values will be carried over from the previous entry.
+    # # Missing continuous values will be interpolated.
+    # def fill_missing_dates(self, date_col: int) -> "Tensor":
+    #
+    #     # Sort by date
+    #     sorted = sort_by_column(arr, 'date')
+    #
+    #     # Count the number of days in the specified range
+    #     start_date = sorted[0]['date']
+    #     last_date = sorted[-1]['date']
+    #     delta = np.timedelta64(1, 'D')
+    #     rows: int = 0
+    #     dt = start_date
+    #     while dt <= last_date:
+    #         rows += 1
+    #         dt += delta
+    #     if rows == sorted.shape[0]:
+    #         return sorted
+    #
+    #     # Interpolate missing dates
+    #     j: int = 0 # j is the source row
+    #     res = np.zeros(rows, dtype=sorted.dtype) # res is the buffer for the results
+    #     dt = start_date # dt is the date of the destination row
+    #     for i in range(rows): # i is the destination row
+    #         res[i] = sorted[j] # copy from source to destination
+    #         prev_date = res[i]['date']
+    #         if dt > prev_date: # Is interpolation needed here?
+    #             next_row = min(sorted.shape[0] - 1, j + 1)
+    #             next_date = sorted[next_row]['date']
+    #             for k in range(len(res.dtype)):
+    #                 if res.dtype[k] == np.float32 or res.dtype[k] == np.float64:
+    #                     colname = res.dtype.names[k]
+    #
+    #                     # Interpolate the value (Note: there seems to be some rounding issues in the next line)
+    #                     res[i][colname] = ((dt - prev_date) * sorted[next_row][colname] + (next_date - dt) * sorted[j][colname]) / (next_date - prev_date)
+    #             res[i]['date'] = dt
+    #
+    #         # Advance
+    #         dt += delta # Advance the destination date
+    #         while j + 1 < sorted.shape[0] and sorted[j + 1]['date'] <= dt:
+    #             j += 1 # Advance the source row past the destination date
+    #     return res
+
+
+
+
+
+
 
 # Initializes values from a list of tuples.
 # Assumes the first row contains column names.
@@ -482,13 +581,7 @@ def load_arff(filename: str) -> Tensor:
 
 
 # Loads from a JSON format that is a list of tuples that redundantly repeat meta-data for every field
-def load_json_1(filename: str) -> Tensor:
-
-    # Load the file
-    filecontents = None
-    with open(filename, mode='rb') as file:
-        filecontents = file.read()
-    obs = json.loads(filecontents)
+def from_list_of_dict_1(obs: List[Dict[str, Any]]) -> Tensor:
 
     # Extract metadata from the first row
     tostr: List[Optional[Dict[int, str]]] = []
@@ -509,3 +602,13 @@ def load_json_1(filename: str) -> Tensor:
             col += 1
         row += 1
     return t
+
+
+
+# Loads from a JSON format that is a list of tuples that redundantly repeat meta-data for every field
+def load_json_1(filename: str) -> Tensor:
+    filecontents = None
+    with open(filename, mode='rb') as file:
+        filecontents = file.read()
+    obs = json.loads(filecontents)
+    return from_list_of_dict_1(obs)
