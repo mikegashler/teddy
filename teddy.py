@@ -7,6 +7,7 @@ import numpy as np
 import scipy.io.arff as arff
 import copy
 import json
+import datetime
 
 
 # Represents the meta data along a single axis of a Tensor
@@ -494,53 +495,53 @@ class Tensor():
         return Tensor(newdata, newmeta)
 
 
-    # # Assumes self is a 2d tensor with metadata on axis 1.
-    # # Returns an tensor with the dates in sorted order with exactly one row for each day.
-    # # Missing categorical values will be carried over from the previous entry.
-    # # Missing continuous values will be interpolated.
-    # def fill_missing_dates(self, date_col: int) -> "Tensor":
-    #
-    #     # Sort by date
-    #     sorted = sort_by_column(arr, 'date')
-    #
-    #     # Count the number of days in the specified range
-    #     start_date = sorted[0]['date']
-    #     last_date = sorted[-1]['date']
-    #     delta = np.timedelta64(1, 'D')
-    #     rows: int = 0
-    #     dt = start_date
-    #     while dt <= last_date:
-    #         rows += 1
-    #         dt += delta
-    #     if rows == sorted.shape[0]:
-    #         return sorted
-    #
-    #     # Interpolate missing dates
-    #     j: int = 0 # j is the source row
-    #     res = np.zeros(rows, dtype=sorted.dtype) # res is the buffer for the results
-    #     dt = start_date # dt is the date of the destination row
-    #     for i in range(rows): # i is the destination row
-    #         res[i] = sorted[j] # copy from source to destination
-    #         prev_date = res[i]['date']
-    #         if dt > prev_date: # Is interpolation needed here?
-    #             next_row = min(sorted.shape[0] - 1, j + 1)
-    #             next_date = sorted[next_row]['date']
-    #             for k in range(len(res.dtype)):
-    #                 if res.dtype[k] == np.float32 or res.dtype[k] == np.float64:
-    #                     colname = res.dtype.names[k]
-    #
-    #                     # Interpolate the value (Note: there seems to be some rounding issues in the next line)
-    #                     res[i][colname] = ((dt - prev_date) * sorted[next_row][colname] + (next_date - dt) * sorted[j][colname]) / (next_date - prev_date)
-    #             res[i]['date'] = dt
-    #
-    #         # Advance
-    #         dt += delta # Advance the destination date
-    #         while j + 1 < sorted.shape[0] and sorted[j + 1]['date'] <= dt:
-    #             j += 1 # Advance the source row past the destination date
-    #     return res
+    # Assumes self is a 2d tensor with metadata on axis 1.
+    # Returns an tensor with the dates in sorted order with exactly one row for each day.
+    # Missing categorical values will be carried over from the previous entry.
+    # Missing continuous values will be interpolated.
+    def fill_missing_dates(self) -> "Tensor":
 
+        # Check assumptions
+        if self.rank() != 2: raise ValueError("Expected a rank 2 tensor")
+        if self.meta.axis != 1: raise ValueError("Expected metadata along axis 1")
 
+        # Sort by date
+        date_index = self.meta.names.index('date') # type: ignore
+        sorted = self.sort((-1, date_index))
 
+        # Count the number of days in the specified range
+        start_date = datetime.datetime.strptime(sorted.get_string((0, date_index)), '%m/%d/%Y')
+        last_date = datetime.datetime.strptime(sorted.get_string((-1, date_index)), '%m/%d/%Y')
+        delta = datetime.timedelta(days = 1)
+        rows: int = 0
+        dt = start_date
+        while dt <= last_date:
+            rows += 1
+            dt += delta
+        if rows == sorted.data.shape[0]:
+            return sorted
+
+        # Interpolate missing dates
+        j: int = 0 # j is the source row
+        res = Tensor(np.zeros((rows, sorted.data.shape[1])), sorted.meta)
+        dt = start_date # dt is the date of the destination row
+        for i in range(rows): # i is the destination row
+            res.data[i] = sorted.data[j] # copy from source to destination
+            prev_date = datetime.datetime.strptime(res.get_string((i, date_index)), '%m/%d/%Y')
+            if dt > prev_date: # Is interpolation needed here?
+                next_row = min(sorted.data.shape[0] - 1, j + 1)
+                next_date = datetime.datetime.strptime(sorted.get_string((next_row, date_index)), '%m/%d/%Y')
+                for k in range(res.data.shape[1]):
+                    if res.meta.is_continuous(k):
+                        # Interpolate the value (Note: there seems to be some rounding issues in the next line)
+                        res.data[i, k] = ((dt - prev_date) * sorted.data[next_row, k] + (next_date - dt) * sorted.data[j, k]) / (next_date - prev_date)
+                res.insert_string((i, date_index), dt.strftime('%m/%d/%Y'))
+
+            # Advance
+            dt += delta # Advance the destination date
+            while j + 1 < sorted.data.shape[0] and datetime.datetime.strptime(sorted.get_string((j + 1, date_index)), '%m/%d/%Y') <= dt:
+                j += 1 # Advance the source row past the destination date
+        return res
 
 
 

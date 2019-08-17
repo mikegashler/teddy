@@ -195,6 +195,15 @@ print(t.sort((-1, 2)))
 print("Sorted by row 0:")
 print(t.sort((0, -1)))
 
+print("Let's test date interpolation...")
+t = td.init_2d([
+	(      'date', 'color', 'units'),
+	('02/26/2016',  'blue',     2.2),
+	('02/28/2016',   'red',     4.4),
+	(  '3/3/2016', 'green',     8.8),
+	])
+print(t.fill_missing_dates())
+
 # print("Let's load a dataset from ARFF format...")
 # t = td.load_arff("/home/mike/data/class/mushroom.arff")
 # print(t)
