@@ -9,6 +9,7 @@ import copy
 import json
 
 
+# Represents the meta data along a single axis of a Tensor
 class MetaData():
 
     # tostr is a list of dictionaries that map sequential integers starting with 0 to string values.
@@ -454,6 +455,8 @@ class Tensor():
     def sort(self, coords: Tuple[int, ...]) -> "Tensor":
         if len(coords) != len(self.data.shape):
             raise ValueError('Expected coords to contain ' + str(len(self.data.shape)) + ' elements, with one -1 to indicate the axis to sort on.')
+
+        # Identify the values that need to be sorted from the specified coordinates
         slice_list_in: List[Any] = []
         axis = -1
         for i in range(len(coords)):
@@ -463,8 +466,18 @@ class Tensor():
                 axis = i
             else:
                 slice_list_in.append(coords[i])
+
+        # Determine the sort order
         sort_me = self.data[tuple(slice_list_in)]
-        sort_order = np.argsort(sort_me, 0)
+        attr = coords[self.meta.axis]
+        if attr != -1 and not self.meta.is_continuous(attr):
+            tostr = self.meta.tostr[attr]
+            no_sort_me_instead = [tostr[x] for x in sort_me] # type: ignore
+            sort_order = np.array(sorted(range(len(no_sort_me_instead)), key = no_sort_me_instead.__getitem__))
+        else:
+            sort_order = np.argsort(sort_me, 0)
+
+        # Sort the data
         slice_list_out: List[Any] = []
         for i in range(len(coords)):
             if coords[i] == -1:
@@ -472,6 +485,8 @@ class Tensor():
             else:
                 slice_list_out.append(slice(None))
         newdata = self.data[slice_list_out]
+
+        # Sort the meta data
         if axis == self.meta.axis:
             newmeta = self.meta.sort(sort_order.tolist())
         else:
