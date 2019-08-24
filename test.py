@@ -1,3 +1,4 @@
+from typing import List
 import numpy as np
 import teddy as td
 
@@ -8,7 +9,7 @@ print("")
 
 
 print("Let's make a single class label (rank 0 tensor with a categorical value)...")
-rank0cat = td.Tensor(0, td.MetaData([{0: "taco"}]))
+rank0cat = td.Tensor(0, td.MetaData([["taco"]]))
 print(rank0cat)
 print("")
 
@@ -19,7 +20,7 @@ print(rank1)
 print("")
 
 print("Let's make a vector of class labels (rank 1 tensor with categorical values)...")
-rank1cat = td.Tensor(np.array([0, 1, 2, 0, 2]), td.MetaData([{0: "alpha", 1: "beta", 2: "gamma"}]))
+rank1cat = td.Tensor(np.array([0, 1, 2, 0, 2]), td.MetaData([["alpha", "beta", "gamma"]]))
 print(rank1cat)
 print("")
 
@@ -53,11 +54,11 @@ data = np.array([
     [0, 12.5, 1, 18],
     [1, 7.0, 2, 27],
     [0, 8.5, 0, 18]])
-vals =  [
-            {0: "Male", 1: "Female"},          # Binary (2-category) attribute
-            None,                              # Continuous attribute
-            {0: "Red", 1: "Green", 2: "Blue"}, # Ternary (3-category) attribute
-            None,                              # Continuous attribute
+vals: List[List[str]] = [
+            ["Male", "Female"],       # Binary (2-category) attribute
+            [],                       # Continuous attribute
+            ["Red", "Green", "Blue"], # Ternary (3-category) attribute
+            [],                       # Continuous attribute
         ]
 names = ["Gender", "Shoe size", "Favorite color", "Age"]
 mixed1 = td.Tensor(data, td.MetaData(vals, 1, names)) # The "1" indicates that the metadata is applied to the columns (axis=1).
@@ -77,10 +78,10 @@ data = np.array([
     [0, 3, 2, 0],
     [0, 3, 2, 1],
     [100, 85, 114, 148]])
-vals =  [
-            None,                                            # Continuous attribute
-            {0: "Blonde", 1: "Black", 2: "Red", 3: "Brown"}, # Quadrinary (4-category) attribute
-            None,                                            # Continuous attribute
+vals = [
+            [],                                  # Continuous attribute
+            ["Blonde", "Black", "Red", "Brown"], # Quadrinary (4-category) attribute
+            [],                                  # Continuous attribute
         ]
 names = ["Children", "Hair", "IQ"]
 mixed2 = td.Tensor(data, td.MetaData(vals, 0, names)) # The "0" indicates that the metadata is applied to the rows (axis=0).
@@ -88,7 +89,7 @@ print(mixed2)
 print("")
 
 print("Let's build a dataset dynamically by adding new rows one at-a-time...")
-dyn = td.Tensor(np.zeros([0, 3]), td.MetaData([{}, None, {}], 1, ['Name', 'Age', 'Occupation']))
+dyn = td.Tensor(np.zeros([0, 3]), td.MetaData([[],[],[]], 1, ['Name', 'Age', 'Occupation']))
 print(dyn)
 print("")
 
@@ -140,9 +141,9 @@ print("Let's print the metadata, because we can...")
 print(dyn.meta)
 
 print("Let's convert a continuous attribute to a categorical one...")
-convert_me = td.Tensor(np.array([[0.1,1],[0.2,0],[0.3,1],[0.4,0]]), td.MetaData([None, None], 1))
+convert_me = td.Tensor(np.array([[0.1,1],[0.2,0],[0.3,1],[0.4,0]]), td.MetaData([[], []], 1))
 print("Before:\n" + str(convert_me))
-convert_me.meta.tostr[1] = {0:'Cold', 1:'Hot'}
+convert_me.meta.tostr[1] = ['Cold', 'Hot']
 convert_me.meta.toval = [] # Forces Teddy to regenerate toval
 print("After:\n" + str(convert_me))
 
@@ -159,9 +160,9 @@ data = np.array([
     [8, 2, 30],
     [10., 0, 21]])
 vals =  [
-            None,                              # Continuous attribute
-            {0: "Red", 1: "Green", 2: "Blue"}, # Ternary (3-category) attribute
-            None,                              # Continuous attribute
+            [],                       # Continuous attribute
+            ["Red", "Green", "Blue"], # Ternary (3-category) attribute
+            [],                       # Continuous attribute
         ]
 names = ["Num", "Color", "Val"]
 normalize_me = td.Tensor(data, td.MetaData(vals, 1, names))
@@ -202,7 +203,29 @@ t = td.init_2d([
 	('02/28/2016',   'red',     4.4),
 	(  '3/3/2016', 'green',     8.8),
 	])
-print(t.fill_missing_dates())
+filled = t.fill_missing_dates()
+print(filled)
+print("And here it is with ISO dates:")
+filled.us_to_iso_dates_inplace()
+print(filled)
+
+print("Let's test concatenation...")
+print(t)
+print(td.concat([t, t, t], 0))
+print(td.concat([t, t, t], 1))
+
+print("Test alignment...")
+a = td.init_2d([
+	(      'date', 'color', 'units'),
+	('02/26/2016',  'blue',     2.2),
+	('02/28/2016',   'red',     4.4),
+	])
+b = td.init_2d([
+	(      'date', 'color', 'units'),
+	('02/28/2016',   'red',     4.4),
+	(  '3/3/2016', 'green',     8.8),
+	])
+print(td.concat([a, b], 0))
 
 # print("Let's load a dataset from ARFF format...")
 # t = td.load_arff("/home/mike/data/class/mushroom.arff")
