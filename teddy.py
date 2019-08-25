@@ -583,14 +583,15 @@ class Tensor():
         # Check assumptions
         if self.rank() != 2: raise ValueError("Expected a rank 2 tensor")
         if self.meta.axis != 1: raise ValueError("Expected metadata along axis 1")
+        fmt = '%Y/%m/%d'
 
         # Sort by date
         date_index = self.meta.names.index('date')
         sorted = self.sort((-1, date_index))
 
         # Count the number of days in the specified range
-        start_date = datetime.datetime.strptime(sorted.get_string((0, date_index)), '%m/%d/%Y')
-        last_date = datetime.datetime.strptime(sorted.get_string((-1, date_index)), '%m/%d/%Y')
+        start_date = datetime.datetime.strptime(sorted.get_string((0, date_index)), fmt)
+        last_date = datetime.datetime.strptime(sorted.get_string((-1, date_index)), fmt)
         delta = datetime.timedelta(days = 1)
         rows: int = 0
         dt = start_date
@@ -606,20 +607,22 @@ class Tensor():
         dt = start_date # dt is the date of the destination row
         for i in range(rows): # i is the destination row
             res.data[i] = sorted.data[j] # copy from source to destination
-            prev_date = datetime.datetime.strptime(res.get_string((i, date_index)), '%m/%d/%Y')
+            prev_date = datetime.datetime.strptime(res.get_string((i, date_index)), fmt)
             if dt > prev_date: # Is interpolation needed here?
                 next_row = min(sorted.data.shape[0] - 1, j + 1)
-                next_date = datetime.datetime.strptime(sorted.get_string((next_row, date_index)), '%m/%d/%Y')
+                next_date = datetime.datetime.strptime(sorted.get_string((next_row, date_index)), fmt)
                 for k in range(res.data.shape[1]):
                     if res.meta.is_continuous(k):
                         # Interpolate the value (Note: there seems to be some rounding issues in the next line)
                         res.data[i, k] = ((dt - prev_date) * sorted.data[next_row, k] + (next_date - dt) * sorted.data[j, k]) / (next_date - prev_date)
-                res.insert_string((i, date_index), dt.strftime('%m/%d/%Y'))
+                res.insert_string((i, date_index), dt.strftime(fmt))
 
             # Advance
             dt += delta # Advance the destination date
-            while j + 1 < sorted.data.shape[0] and datetime.datetime.strptime(sorted.get_string((j + 1, date_index)), '%m/%d/%Y') <= dt:
+            while j + 1 < sorted.data.shape[0] and datetime.datetime.strptime(sorted.get_string((j + 1, date_index)), fmt) <= dt:
                 j += 1 # Advance the source row past the destination date
+        if res.data.shape[0] < self.data.shape[0]:
+            raise ValueError("Made it smaller? Were there multiple values per day?")
         return res
 
 
@@ -717,9 +720,12 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
     # Extract metadata from the first row
     tostr: List[List[str]] = []
     names: List[str] = []
+    cat: List[bool] = [] # Used to check for consistency of types
     for k in obs[0]:
         tostr.append([])
         names.append(k)
+        if isinstance(obs[0][k], str): cat.append(True)
+        else: cat.append(False)
 
     # Extract all the data
     t = Tensor(np.zeros((len(obs), len(names))), MetaData(tostr, 1, names))
@@ -727,12 +733,9 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
     for ob in obs:
         col = 0
         for k in ob:
-            if t.meta.is_continuous(col):
-                print("-->" + str(ob[k])) ########### remove me
-                t.data[row, col] = ob[k]
-            else: t.insert_string((row, col), ob[k])
+            if cat[col]: t.insert_string((row, col), ob[k])
+            else: t.data[row, col] = ob[k]
             col += 1
-            break ########### remove me
         row += 1
     return t
 
