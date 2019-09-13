@@ -1,232 +1,299 @@
 from typing import List
-import numpy as np
 import teddy as td
+import numpy as np
+import tempfile
 
-print("Let's make a single scalar (rank 0 tensor with a continuous value)...")
-rank0 = td.Tensor(3.14)
-print(rank0)
-print("")
+# Assert that 'a' and 'b' are equal.
+# If not, print some helpful output to identify where they first differ
+def helpful_assert(a: str, b: str) -> None:
+    if a == b:
+        return
+
+    # Uh oh, they're not equal. Let's figure out where they first differ.
+    n = min(len(a), len(b))
+    got_it = False
+    for i in range(n):
+        if a[i] != b[i]:
+            start = max(0, i - 8)
+            finish = min(min(len(a), len(b)), i + 8)
+            print("Strings do not match here:")
+            print('\n' + '_' * (i - start) + 'V' + '_' * (finish - i - 1))
+            for j in range(start, finish):
+                if a[j] > ' ':
+                    print(a[j], end = '')
+                else:
+                    print('~', end = '')
+            print('')
+            for j in range(start, finish):
+                if b[j] > ' ':
+                    print(b[j], end = '')
+                else:
+                    print('~', end = '')
+            print('\n')
+            got_it = True
+            break
+    if not got_it:
+        if len(a) < len(b):
+            print('The first string is shorter')
+        elif len(a) > len(b):
+            print('The first string is longer')
+        else:
+            print('huh?')
+    print('a=' + a[:500] + '\n')
+    print('b=' + b[:500] + '\n')
+
+    # Trigger a test failure
+    assert False
 
 
-print("Let's make a single class label (rank 0 tensor with a categorical value)...")
-rank0cat = td.Tensor(0, td.MetaData([["taco"]]))
-print(rank0cat)
-print("")
+class TestTeddy():
+
+    def test_rank0_tensors(self) -> None:
+        t1 = td.Tensor(3.14, td.MetaData([[]], -1, ['pi']))
+        helpful_assert(str(t1), 'pi:3.14')
+        t2 = td.Tensor(0, td.MetaData([['female', 'male']], -1, ['gender']))
+        helpful_assert(str(t2), 'gender:female')
+
+    def test_categorical_representations(self) -> None:
+        t = td.init_2d([
+        	(      'date', 'color', 'units'),
+        	('2016/02/26',  'blue',     2.2),
+        	('2016/02/28',   'red',     4.4),
+        	('2016/03/02',  'blue',     1.1),
+        	(  '2016/3/3', 'green',     8.8),
+        	])
+        assert t.data[0, 1] != t.data[1, 1]
+        assert t.data[0, 1] == t.data[2, 1]
+
+    def test_slicing(self) -> None:
+        t = td.init_2d([
+        	(      'date', 'color', 'units'),
+        	('2016/02/26',  'blue',     2.2),
+        	('2016/02/28',   'red',     4.4),
+        	('2016/03/02',  'blue',     1.1),
+        	(  '2016/3/3', 'green',     8.8),
+        	])
+
+        expected = '[date:2016/02/28, color:red, units:4.4]'
+        helpful_assert(str(t[1]), expected)
+
+        expected = 'color:[blue, red, blue, green]'
+        helpful_assert(str(t[:, 1]), expected)
+        helpful_assert(str(t[:, 'color']), expected)
+
+        expected = ('   color \n'
+                    '[[ blue]\n'
+                    ' [  red]\n'
+                    ' [ blue]\n'
+                    ' [green]]\n')
+        helpful_assert(str(t[:, 1:2]), expected)
+
+        expected = ('         date unit \n'
+                    '[[2016/02/26, 2.2]\n'
+                    ' [2016/02/28, 4.4]\n'
+                    ' [2016/03/02, 1.1]\n'
+                    ' [  2016/3/3, 8.8]]\n')
+        helpful_assert(str(t[:, [0, 2]]), expected)
+
+        expected = ('         date unit \n'
+                    '[[2016/02/26, 2.2]\n'
+                    ' [2016/02/28, 4.4]\n'
+                    ' [2016/03/02, 1.1]\n'
+                    ' [  2016/3/3, 8.8]]\n')
+        helpful_assert(str(t[:, ['date', 'units']]), expected)
+
+        expected = ('         date  color unit \n'
+                    '[[2016/02/28,   red, 4.4]\n'
+                    ' [  2016/3/3, green, 8.8]]\n')
+        helpful_assert(str(t[[1, 3], :]), expected)
+
+        expected = ('         date  color \n'
+                    '[[2016/02/28,   red]\n'
+                    ' [2016/03/02,  blue]\n'
+                    ' [  2016/3/3, green]]\n')
+        helpful_assert(str(t[1:, :2]), expected)
+
+    def test_normalizing(self) -> None:
+        t = td.init_2d([
+        	('attr1', 'attr2', 'attr3'),
+        	(0.,       'blue',     20),
+        	(2.,        'red',     30),
+        	(4.,       'blue',     20),
+        	(6.,      'green',     40),
+        	(8.,        'red',     30),
+        	(10.,     'green',     25),
+        	])
+        t.normalize_inplace()
+        assert abs(0.0 - t.data[0, 0]) < 1e-10
+        assert abs(0.2 - t.data[1, 0]) < 1e-10
+        assert abs(0.4 - t.data[2, 0]) < 1e-10
+        assert abs(0.6 - t.data[3, 0]) < 1e-10
+        assert abs(0.8 - t.data[4, 0]) < 1e-10
+        assert abs(1.0 - t.data[5, 0]) < 1e-10
+        helpful_assert(str(t[:,'attr2']), "attr2:[blue, red, blue, green, red, green]")
+        assert abs(0.0 - t.data[0, 2]) < 1e-10
+        assert abs(0.5 - t.data[1, 2]) < 1e-10
+        assert abs(0.0 - t.data[2, 2]) < 1e-10
+        assert abs(1.0 - t.data[3, 2]) < 1e-10
+        assert abs(0.5 - t.data[4, 2]) < 1e-10
+        assert abs(0.25 - t.data[5, 2]) < 1e-10
+
+    def test_one_hot(self) -> None:
+        t = td.init_2d([
+        	('attr1', 'attr2', 'attr3',  'attr4',  'attr5'),
+        	(0.0,       'blue',      20,  'true',  'apple'),
+        	(0.1,        'red',      30, 'false', 'carrot'),
+        	(0.2,      'green',      20,  'true', 'banana'),
+        	(0.3,        'red',      10,  'true',  'grape'),
+        	])
+        expected = ('  attr blue red_ gree attr3 attr appl carr bana grap \n'
+                    '[[0.0, 1.0, 0.0, 0.0, 20.0, 0.0, 1.0, 0.0, 0.0, 0.0]\n'
+                    ' [0.1, 0.0, 1.0, 0.0, 30.0, 1.0, 0.0, 1.0, 0.0, 0.0]\n'
+                    ' [0.2, 0.0, 0.0, 1.0, 20.0, 0.0, 0.0, 0.0, 1.0, 0.0]\n'
+                    ' [0.3, 0.0, 1.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0]]\n')
+        actual = str(t.one_hot())
+        helpful_assert(actual, expected)
+
+    def test_sorting(self) -> None:
+        t = td.init_2d([
+        	('num', 'color', 'val'),
+        	(    5,  'blue',  3.14),
+        	(    7,   'red',  1.01),
+        	(    4, 'green',  88.8),
+        	])
+
+        expected = ('   num  color   val \n'
+                    '[[4.0, green, 88.8]\n'
+                    ' [5.0,  blue, 3.14]\n'
+                    ' [7.0,   red, 1.01]]\n')
+        helpful_assert(str(t.sort((-1, 0))), expected)
+
+        expected = ('   num  color   val \n'
+                    '[[5.0,  blue, 3.14]\n'
+                    ' [4.0, green, 88.8]\n'
+                    ' [7.0,   red, 1.01]]\n')
+        helpful_assert(str(t.sort((-1, 1))), expected)
+
+        expected = ('   num  color   val \n'
+                    '[[7.0,   red, 1.01]\n'
+                    ' [5.0,  blue, 3.14]\n'
+                    ' [4.0, green, 88.8]]\n')
+        helpful_assert(str(t.sort((-1, 2))), expected)
+
+        expected = ('   color   val  num \n'
+                    '[[ blue, 3.14, 5.0]\n'
+                    ' [  red, 1.01, 7.0]\n'
+                    ' [green, 88.8, 4.0]]\n')
+        helpful_assert(str(t.sort((0, -1))), expected)
+
+    def test_expand_dims(self) -> None:
+        t = td.Tensor(np.zeros(4), td.MetaData([], 0, ['a', 'b', 'c', 'd']))
+
+        expected = ('     a    b    c    d \n'
+                    '[[0.0, 0.0, 0.0, 0.0]]\n')
+        helpful_assert(str(t.expand_dims(0)), expected)
+
+        expected = ('[           a:[0.0]\n'
+                    '            b:[0.0]\n'
+                    '            c:[0.0]\n'
+                    '            d:[0.0]]\n')
+        helpful_assert(str(t.expand_dims(1)), expected)
+
+    def test_pandas_conversion(self) -> None:
+        t = td.init_2d([
+        	('num', 'color', 'val'),
+        	(    5,  'blue',  3.14),
+        	(    7,   'red',  1.01),
+        	(    4, 'green',  88.8),
+        	])
+
+        expected = ('   num  color   val \n'
+                    '[[5.0,  blue, 3.14]\n'
+                    ' [7.0,   red, 1.01]\n'
+                    ' [4.0, green, 88.8]]\n')
+        helpful_assert(str(t), expected)
+        helpful_assert(str(td.from_pandas(t.to_pandas())), expected)
+
+    def test_load_arff(self) -> None:
+        arff = ('@RELATION some ARFF relation\n'
+                '@ATTRIBUTE a1 real\n'
+                '@ATTRIBUTE a2 {cat, dog, mouse}\n'
+                '@DATA\n'
+                '3.14, cat\n'
+                '0.12, mouse\n'
+                '0, dog')
+        with tempfile.NamedTemporaryFile() as tf:
+            tf.write(bytes(arff, encoding='utf8'))
+            tf.flush()
+            t = td.load_arff(tf.name)
+            expected = ('     a1     a2 \n'
+                        '[[3.14,   cat]\n'
+                        ' [0.12, mouse]\n'
+                        ' [ 0.0,   dog]]\n')
+            helpful_assert(str(t), expected)
+
+    def test_concat(self) -> None:
+        a = td.init_2d([
+        	('num', 'animal'),
+        	(    1,  'cat'),
+        	(    2,  'dog'),
+        	(    3,  'cat'),
+        	])
+        b = td.init_2d([
+        	('num', 'animal'),
+        	(    4,  'cat'),
+        	(    5,  'mouse'),
+        	(    6,  'cat'),
+        	])
+
+        expected = ('   num animal \n'
+                    '[[1.0,   cat]\n'
+                    ' [2.0,   dog]\n'
+                    ' [3.0,   cat]\n'
+                    ' [4.0,   cat]\n'
+                    ' [5.0, mouse]\n'
+                    ' [6.0,   cat]]\n')
+        helpful_assert(str(td.concat([a, b], 0)), expected)
+
+        expected = ('   num anim  num animal \n'
+                    '[[1.0, cat, 4.0,   cat]\n'
+                    ' [2.0, dog, 5.0, mouse]\n'
+                    ' [3.0, cat, 6.0,   cat]]\n')
+        helpful_assert(str(td.concat([a, b], 1)), expected)
+
+    def run_all_tests(self) -> None:
+        print("Testing rank 0 tensors...")
+        self.test_rank0_tensors()
+
+        print("Testing categorical representations...")
+        self.test_categorical_representations()
+
+        print("Testing slicing...")
+        self.test_slicing()
+
+        print("Testing normalizing...")
+        self.test_normalizing()
+
+        print("Testing one hot encoding...")
+        self.test_one_hot()
+
+        print("Testing expand_dims...")
+        self.test_expand_dims()
+
+        print("Testing sorting...")
+        self.test_sorting()
+
+        print("Testing Pandas conversion...")
+        self.test_pandas_conversion()
+
+        print("Testing load_arff...")
+        self.test_load_arff()
+
+        print("Testing concat...")
+        self.test_concat()
+
+        print("Passed all tests!")
 
 
-print("Let's make a vector of scalars (rank 1 tensor with continuous values)...")
-rank1 = td.Tensor(np.array([1.1, 2.2, 3.3, 4.4, 5.5]))
-print(rank1)
-print("")
-
-print("Let's make a vector of class labels (rank 1 tensor with categorical values)...")
-rank1cat = td.Tensor(np.array([0, 1, 2, 0, 2]), td.MetaData([["alpha", "beta", "gamma"]]))
-print(rank1cat)
-print("")
-
-print("Let's make a Rank 2 tensor full of scalar zeros...")
-rank2 = td.Tensor(np.zeros([4, 7]))
-print(rank2)
-print("")
-
-print("Let's make a Rank 3 tensor of zeros...")
-rank3 = td.Tensor(np.zeros([2, 3, 4]))
-print(rank3)
-print("")
-
-print("Let's make a Rank 4 tensor of zeros...")
-rank4 = td.Tensor(np.zeros([2, 2, 3, 4]))
-print(rank4)
-print("")
-
-print("Let's slice the Rank 2 tensor...")
-rank2_sliced = rank2[2 : 4, 2 : 5]
-print(rank2_sliced)
-print("")
-
-print("Let's slice the rank 3 tensor into a rank 2 tensor...")
-rank3_sliced = rank3[1,:,1:]
-print(rank3_sliced)
-print("")
-
-print("Let's make a rank 2 tensor with mixed types...")
-data = np.array([
-    [0, 12.5, 1, 18],
-    [1, 7.0, 2, 27],
-    [0, 8.5, 0, 18]])
-vals: List[List[str]] = [
-            ["Male", "Female"],       # Binary (2-category) attribute
-            [],                       # Continuous attribute
-            ["Red", "Green", "Blue"], # Ternary (3-category) attribute
-            [],                       # Continuous attribute
-        ]
-names = ["Gender", "Shoe size", "Favorite color", "Age"]
-mixed1 = td.Tensor(data, td.MetaData(vals, 1, names)) # The "1" indicates that the metadata is applied to the columns (axis=1).
-print(mixed1)
-print("")
-
-print("Let's slice it a few different ways...")
-print("(1) " + str(mixed1[1]))
-print("(2) " + str(mixed1[0, 0]))
-print("(3) " + str(mixed1[2, 1]))
-print("(4) " + str(mixed1[:,2]))
-print("(5)\n" + str(mixed1[1:, 1:]))
-print("")
-
-print("Let's do one with labeled rows...")
-data = np.array([
-    [0, 3, 2, 0],
-    [0, 3, 2, 1],
-    [100, 85, 114, 148]])
-vals = [
-            [],                                  # Continuous attribute
-            ["Blonde", "Black", "Red", "Brown"], # Quadrinary (4-category) attribute
-            [],                                  # Continuous attribute
-        ]
-names = ["Children", "Hair", "IQ"]
-mixed2 = td.Tensor(data, td.MetaData(vals, 0, names)) # The "0" indicates that the metadata is applied to the rows (axis=0).
-print(mixed2)
-print("")
-
-print("Let's build a dataset dynamically by adding new rows one at-a-time...")
-dyn = td.Tensor(np.zeros([0, 3]), td.MetaData([[],[],[]], 1, ['Name', 'Age', 'Occupation']))
-print(dyn)
-print("")
-
-dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
-dyn.insert_string((0, 0), 'Alice')
-dyn.set_float((0, 1), 23.)
-dyn.insert_string((0, 2), 'Computer Programmer')
-print(dyn)
-print("")
-
-dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
-dyn.insert_string((1, 0), 'Bob')
-dyn.set_float((1, 1), 32.)
-dyn.insert_string((1, 2), 'Sanitation Engineer')
-print(dyn)
-print("")
-
-dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
-dyn.insert_string((2, 0), 'Charlie')
-dyn.set_float((2, 1), 4.5)
-dyn.insert_string((2, 2), 'Student')
-print(dyn)
-print("")
-
-dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
-dyn.insert_string((3, 0), 'Dave')
-dyn.set_float((3, 1), 55)
-dyn.insert_string((3, 2), 'Sanitation Engineer')
-print(dyn)
-print("")
-
-dyn.data = np.append(dyn.data, [[0, 0, 0]], 0)
-dyn.insert_string((4, 0), 'Eric')
-dyn.set_float((4, 1), 79)
-dyn.insert_string((4, 2), 'Retired')
-print(dyn)
-print("")
-
-print("Let's change Eric's job...")
-dyn.set_string((4, 2), 'Sanitation Engineer')
-print(dyn)
-print("")
-
-print("Let's print the internal data, to make sure the same categorical value is reused for 'Sanitation Engineer'...")
-print(dyn.data)
-print("")
-
-print("Let's print the metadata, because we can...")
-print(dyn.meta)
-
-print("Let's convert a continuous attribute to a categorical one...")
-convert_me = td.Tensor(np.array([[0.1,1],[0.2,0],[0.3,1],[0.4,0]]), td.MetaData([[], []], 1))
-print("Before:\n" + str(convert_me))
-convert_me.meta.tostr[1] = ['Cold', 'Hot']
-convert_me.meta.toval = [] # Forces Teddy to regenerate toval
-print("After:\n" + str(convert_me))
-
-print("And let's demonstrate that you can still perform numpy operations on the raw data...")
-convert_me.data[:,0] *= 2
-print(convert_me)
-
-print("Let's demonstrate normalizing...")
-data = np.array([
-    [0., 1, 20],
-    [2., 2, 30],
-    [4., 2, 20],
-    [6, 2, 40],
-    [8, 2, 30],
-    [10., 0, 21]])
-vals =  [
-            [],                       # Continuous attribute
-            ["Red", "Green", "Blue"], # Ternary (3-category) attribute
-            [],                       # Continuous attribute
-        ]
-names = ["Num", "Color", "Val"]
-normalize_me = td.Tensor(data, td.MetaData(vals, 1, names))
-print("Before:")
-print(normalize_me)
-normalize_me.normalize_inplace()
-print("After:")
-print(normalize_me)
-
-print("Let's demonstrate one-hot encoding...")
-print("Before:")
-print(mixed1)
-print("After:")
-print(mixed1.one_hot())
-
-print("Let's test sorting...")
-t = td.init_2d([
-	('num', 'color', 'val'),
-	(    5,  'blue',  3.14),
-	(    7,   'red',  1.01),
-	(    4, 'green',  88.8),
-	])
-print("Before:")
-print(t)
-print("Sorted by num:")
-print(t.sort((-1, 0)))
-print("Sorted by color:")
-print(t.sort((-1, 1)))
-print("Sorted by val:")
-print(t.sort((-1, 2)))
-print("Sorted by row 0:")
-print(t.sort((0, -1)))
-
-print("Let's test date interpolation...")
-t = td.init_2d([
-	(      'date', 'color', 'units'),
-	('02/26/2016',  'blue',     2.2),
-	('02/28/2016',   'red',     4.4),
-	(  '3/3/2016', 'green',     8.8),
-	])
-filled = t.fill_missing_dates()
-print(filled)
-print("And here it is with ISO dates:")
-filled.us_to_iso_dates_inplace()
-print(filled)
-
-print("Let's test concatenation...")
-print(t)
-print(td.concat([t, t, t], 0))
-print(td.concat([t, t, t], 1))
-
-print("Test alignment...")
-a = td.init_2d([
-	(      'date', 'color', 'units'),
-	('02/26/2016',  'blue',     2.2),
-	('02/28/2016',   'red',     4.4),
-	])
-b = td.init_2d([
-	(      'date', 'color', 'units'),
-	('02/28/2016',   'red',     4.4),
-	(  '3/3/2016', 'green',     8.8),
-	])
-print(td.concat([a, b], 0))
-
-# print("Let's load a dataset from ARFF format...")
-# t = td.load_arff("/home/mike/data/class/mushroom.arff")
-# print(t)
+tt = TestTeddy()
+tt.run_all_tests()
