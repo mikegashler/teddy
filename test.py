@@ -49,9 +49,9 @@ def helpful_assert(a: str, b: str) -> None:
 class TestTeddy():
 
     def test_rank0_tensors(self) -> None:
-        t1 = td.Tensor(3.14, td.MetaData(-1, ['pi']))
+        t1 = td.Tensor(3.14, td.MetaData(None, ['pi']))
         helpful_assert(str(t1), 'pi:3.14')
-        t2 = td.Tensor(0, td.MetaData(-1, ['gender'], [['female', 'male']]))
+        t2 = td.Tensor(0, td.MetaData(None, ['gender'], [['female', 'male']]))
         helpful_assert(str(t2), 'gender:female')
 
     def test_categorical_representations(self) -> None:
@@ -112,6 +112,17 @@ class TestTeddy():
                     ' [2016/03/02,  blue]\n'
                     ' [  2016/3/3, green]]\n')
         helpful_assert(str(t[1:, :2]), expected)
+
+    def test_to_list(self) -> None:
+        t = td.init_2d([
+            ('animal',  'num'),
+            (   'cat',      1),
+            (   'dog',      2),
+            (   'bat',      3),
+            (   'pig',      4),
+        ])
+        expected = ("[['cat', 1.0], ['dog', 2.0], ['bat', 3.0], ['pig', 4.0]]")
+        helpful_assert(str(t.to_list()), expected)
 
     def test_normalizing(self) -> None:
         t = td.init_2d([
@@ -214,6 +225,16 @@ class TestTeddy():
         helpful_assert(str(t), expected)
         helpful_assert(str(td.from_pandas(t.to_pandas())), expected)
 
+    def test_from_column_mapping(self) -> None:
+        cols = { 'numbers': [1,2,3,4], 'letters': ['a', 'b', 'c', 'd'] }
+        t = td.from_column_mapping(cols)
+        expected = ('  numb le \n'
+                    '[[1.0, a]\n'
+                    ' [2.0, b]\n'
+                    ' [3.0, c]\n'
+                    ' [4.0, d]]\n')
+        helpful_assert(str(t), expected)
+
     def test_load_arff(self) -> None:
         arff = ('@RELATION some ARFF relation\n'
                 '@ATTRIBUTE a1 real\n'
@@ -283,6 +304,9 @@ class TestTeddy():
         print("Testing slicing...")
         self.test_slicing()
 
+        print("Testing to_list...")
+        self.test_to_list()
+
         print("Testing normalizing...")
         self.test_normalizing()
 
@@ -297,6 +321,9 @@ class TestTeddy():
 
         print("Testing Pandas conversion...")
         self.test_pandas_conversion()
+
+        print("Testing from_column_mapping...")
+        self.test_from_column_mapping()
 
         print("Testing load_arff...")
         self.test_load_arff()
