@@ -165,6 +165,19 @@ class TestTeddy():
         actual = str(t.one_hot())
         helpful_assert(actual, expected)
 
+        # Test that it can also handle NaNs correctly
+        t.data[0, 3] = np.nan
+        t.data[0, 4] = np.nan
+        t.data[2, 1] = np.nan
+        expecte2 = ('  attr blue red_ gree attr3 attr appl carr bana grap \n'
+                    '[[0.0, 1.0, 0.0, 0.0, 20.0, 0.5, 0.0, 0.0, 0.0, 0.0]\n'
+                    ' [0.1, 0.0, 1.0, 0.0, 30.0, 1.0, 0.0, 1.0, 0.0, 0.0]\n'
+                    ' [0.2, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 1.0, 0.0]\n'
+                    ' [0.3, 0.0, 1.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0]]\n')
+        actua2 = str(t.one_hot())
+        helpful_assert(actua2, expecte2)
+
+
     def test_sorting(self) -> None:
         t = td.init_2d([
             ('num', 'color', 'val'),
@@ -294,6 +307,61 @@ class TestTeddy():
                     '          val:[3.14, 1.01,  88.8]]\n')
         helpful_assert(str(t.transpose()), expected)
 
+    def test_print_nans(self) -> None:
+        a = td.init_2d([
+            ('num', 'color', 'val'),
+            (    5,  'blue',  3.14),
+            (    4, 'green',  88.8),
+            (    7,   'red',  1.01),
+            ])
+        a.data[2, 2] = np.nan
+        a.data[1, 1] = np.nan
+        expected = ('   num color   val \n'
+                    '[[5.0, blue, 3.14]\n'
+                    ' [4.0,  NaN, 88.8]\n'
+                    ' [7.0,  red,  nan]]\n')
+        helpful_assert(str(a), expected)
+
+    def test_remap_cat_vals(self) -> None:
+        a = td.init_2d([
+            ('num', 'color', 'val'),
+            (    4, 'green',  88.8),
+            ])
+        b = td.init_2d([
+            ('num', 'color', 'val'),
+            (    5,  'blue',  3.14),
+            (    4, 'green',  88.8),
+            (    7,   'red',  1.01),
+            ])
+        c = a.deepcopy()
+        c.remap_cat_vals(b.meta, False)
+        if a.meta.cat_to_enum[1]['green'] != 0:
+            raise ValueError('Unexpected initial value')
+        if c.meta.cat_to_enum[1]['green'] != 1:
+            raise ValueError('Unexpected mapped value')
+        helpful_assert(str(a), str(c))
+
+    def test_remap_cat_vals_missing(self) -> None:
+        a = td.init_2d([
+            ('num', 'color', 'val'),
+            (    4,  'pink',  88.8),
+            ])
+        b = td.init_2d([
+            ('num', 'color', 'val'),
+            (    5,  'blue',  3.14),
+            (    4, 'green',  88.8),
+            (    7,   'red',  1.01),
+            ])
+        c = a.deepcopy()
+        c.remap_cat_vals(b.meta, True)
+        if a.meta.cat_to_enum[1]['pink'] != 0:
+            raise ValueError('Unexpected initial value')
+        if c.meta.cat_to_enum[1]['green'] != 1:
+            raise ValueError('Unexpected mapped value')
+        expected = ('   num colo   val \n'
+                    '[[4.0, NaN, 88.8]]\n')
+        helpful_assert(str(c), expected)
+
     def run_all_tests(self) -> None:
         print("Testing rank 0 tensors...")
         self.test_rank0_tensors()
@@ -333,6 +401,13 @@ class TestTeddy():
 
         print("Testing transpose...")
         self.test_transpose()
+
+        print("Testing print nans...")
+        self.test_print_nans()
+
+        print("Testing remap_cat_vals...")
+        self.test_remap_cat_vals()
+        self.test_remap_cat_vals_missing()
 
         print("Passed all tests!")
 

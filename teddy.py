@@ -2,7 +2,7 @@
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, EPL1.0.
 # So pick your favorite license, do what you want, and have fun!
 
-from typing import cast, Union, Dict, Mapping, Optional, Tuple, Any, List
+from typing import cast, Union, Dict, Mapping, Optional, Tuple, Any, List, Sequence
 import numpy as np
 import pandas as pd
 import scipy.io.arff as arff
@@ -19,19 +19,22 @@ def sort_order(l: List[Any]) -> List[int]:
 class MetaData(object):
 
     # axis specifies which axis this metadata is bound to.
-    # (-1 indicates that one attribute applies to the whole tensor.)
+    # (None indicates that one attribute applies to the whole tensor.)
     # names is a list of strings that describe each attribute.
     # cats is a list of (list of categories) for each attribute.
+    # types is a list of strings that describe type hints (str, int, float, datetime64, etc)
     # (An empty list indicates a continuous attribute.)
     def __init__(self,
         axis: Optional[int] = -1,
-        names: Optional[List[str]] = None,
-        cats: Optional[List[List[str]]] = None,
+        names: Optional[Sequence[str]] = None,
+        cats: Optional[Sequence[Sequence[str]]] = None,
+        types: Optional[Sequence[Union[str, None]]] = None,
     ) -> None:
         self.axis = axis
-        self.names: List[str] = names if names else []
-        self.cats: List[List[str]] = cats if cats else []
-        if axis is None and (len(self.names) > 1 or len(self.cats) > 1):
+        self.names = list(names) if names else []
+        self.cats = [ list(c) for c in cats ] if cats else [ [] for _ in range(len(self.names)) ]
+        self.types = list(types) if types else [ None for _ in range(len(self.names)) ]
+        if axis is None and (len(self.names) > 1 or len(self.cats) > 1 or len(self.types) > 1):
             raise ValueError('Multiple attribute specifications were provided for the universal axis.')
         self.cat_to_enum: List[Dict[str, int]] = []
         for attr_cats in self.cats:
@@ -43,7 +46,12 @@ class MetaData(object):
 
     # Returns a deep copy of this object
     def deepcopy(self) -> 'MetaData':
-        return MetaData(self.axis, copy.deepcopy(self.names), copy.deepcopy(self.cats))
+        return MetaData(
+            self.axis,
+            copy.deepcopy(self.names),
+            copy.deepcopy(self.cats),
+            copy.deepcopy(self.types)
+        )
 
 
     # Ensures that the meta data is fully specified
@@ -52,6 +60,8 @@ class MetaData(object):
             self.cats.append([])
         while len(self.names) < size:
             self.names.append('attr_' + str(len(self.names)))
+        while len(self.types) < size:
+            self.types.append(None)
 
 
     # Returns metadata sorted with the specified order
@@ -59,7 +69,8 @@ class MetaData(object):
         self.complete(max(order))
         newcats = [self.cats[i] for i in order]
         newnames = [self.names[i] for i in order]
-        return MetaData(self.axis, newnames, newcats)
+        newtypes = [self.types[i] for i in order]
+        return MetaData(self.axis, newnames, newcats, newtypes)
 
 
     # Returns the numerical representation of the specified string given the specified axis
@@ -78,6 +89,8 @@ class MetaData(object):
         d = self.cats[attr]
         if len(d) == 0:
             return str(val) # Continuous
+        elif np.isnan(val):
+            return 'NaN'
         else:
             cat_index = int(val)
             if cat_index >= 0 and cat_index < len(d):
@@ -92,6 +105,7 @@ class MetaData(object):
             newaxis = self.axis
             newcats = self.cats
             newnames = self.names
+            newtypes = self.types
             i = 0
             for a in args:
                 if self.axis is not None and i < self.axis:
@@ -102,26 +116,36 @@ class MetaData(object):
                     if isinstance(a, slice): # A slice of attributes
                         newcats = newcats[a]
                         newnames = newnames[a]
+                        newtypes = newtypes[a]
                     elif isinstance(a, list):
                         newcats = [self.cats[j] for j in a]
                         newnames = [self.names[j] for j in a]
+                        newtypes = [self.types[j] for j in a]
                     else:
                         newcats = [self.cats[a]]
-                        if len(newnames) > a: newnames = [newnames[a]]
-                        else: newnames = []
+                        if len(newnames) > a:
+                            newnames = [newnames[a]]
+                        else:
+                            newnames = []
+                        if len(newtypes) > a:
+                            newtypes = [newtypes[a]]
+                        else:
+                            newtypes = []
                         newaxis = None
                 else:
                     break
                 i += 1
-            return MetaData(newaxis, newnames, newcats)
+            return MetaData(newaxis, newnames, newcats, newtypes)
         elif isinstance(args, slice): # Slice axis 0
-            if self.axis == 0: return MetaData(self.axis, self.names[args], self.cats[args])
-            else: return self # Nothing to change
+            if self.axis == 0:
+                return MetaData(self.axis, self.names[args], self.cats[args], self.types[args])
+            else:
+                return self # Nothing to change
         else: # Index axis 0
             if self.axis is not None and self.axis > 0:
-                return MetaData(self.axis - 1, self.names, self.cats) # Drop first axis
+                return MetaData(self.axis - 1, self.names, self.cats, self.types) # Drop first axis
             elif self.axis is not None and self.axis == 0:
-                return MetaData(None, self.names[args], [self.cats[args]]) # List of one element
+                return MetaData(None, self.names[args], [self.cats[args]], [self.types[args]]) # List of one element
             else:
                 return self # Nothing to change
 
@@ -148,7 +172,7 @@ class MetaData(object):
     # Returns true iff the specified attribute is continuous (as opposed to categorical)
     def is_continuous(self, attr: int) -> bool:
         if self.axis is None:
-            attr = 0 # if axis is -1, the metadata applies to everything
+            attr = 0
         if attr >= len(self.cats):
             return True
         else:
@@ -158,8 +182,16 @@ class MetaData(object):
     # Returns the number of categories in a categorical attribute
     def categories(self, attr: int) -> int:
         if self.axis is None:
-            attr = 0 # if axis is -1, the metadata applies to everything
+            attr = 0
         return len(self.cats[attr])
+
+
+    # Returns whether this meta contains type hints
+    def has_type_hints(self) -> bool:
+        for t in self.types:
+            if t is not None:
+                return True
+        return False
 
 
 
@@ -374,25 +406,25 @@ class Tensor():
 
     # Gets the value at the specified coordinates.
     # If the value is categorical, returns its enumeration as a float.
-    def get_float(self, coords: Tuple[int, ...]) -> Any:
-        return self.data[coords]
+    def get_float(self, *coords: int) -> float:
+        return cast(float, self.data[coords].item())
 
 
     # Gets the value at the specified coordinates.
     # If the value is continuous, returns a string representation of its value.
-    def get_string(self, coords: Tuple[int, ...]) -> str:
+    def get_string(self, *coords: int) -> str:
         attr = self.meta.axis or 0
         return self.meta.to_str(coords[attr], self.data[coords])
 
 
     # Returns the element at the specified coordinates.
-    def get(self, coords: Tuple[int, ...]) -> Any:
+    def get(self, *coords: int) -> Union[float, str]:
         attr = self.meta.axis or 0
         if self.meta.is_continuous(coords[attr]):
-            v = self.get_float(coords)
+            v = self.get_float(*coords)
             return v
         else:
-            s = self.get_string(coords)
+            s = self.get_string(*coords)
             return s
 
 
@@ -416,6 +448,7 @@ class Tensor():
     # Sets a value by string, adding a new category if necessary to accomodate it.
     # Raises an error if the specified attribute is not categorical.
     def insert_string(self, coords: Tuple[int, ...], s: str) -> None:
+        s = str(s)
         i = coords[self.meta.axis] if self.meta.axis is not None else 0
         to_enum = self.meta.cat_to_enum[i]
         if s in to_enum: # If this is already an existing category...
@@ -440,12 +473,43 @@ class Tensor():
         else:
             self.data[coords] = val
 
+    # Adopts the supplied MetaData object, remapping values as needed to conform with the new MetaData.
+    # If a categorical value is encountered that is not found in the new MetaData object,
+    # behavior depends on allow_unrecognized_cat_vals. It sets the value to nan if true, else throws.
+    def remap_cat_vals(self, template_meta: MetaData, allow_unrecognized_cat_vals: bool) -> None:
+        # Check for compatibility
+        if self.meta.axis != template_meta.axis:
+            raise ValueError('Attributes on different axes')
+        if self.data.shape[self.meta.axis or 0] != len(template_meta.cats):
+            raise ValueError('Different sizes on the meta axes')
+        for attr in range(self.data.shape[self.meta.axis or 0]):
+            if self.meta.is_continuous(attr) != template_meta.is_continuous(attr):
+                raise ValueError('Mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
+
+        # Remap the categorical values
+        n = self.meta.axis or 0
+        for attr in range(self.data.shape[n]):
+            if self.meta.is_continuous(attr):
+                continue
+            m: Dict[int, int] = {}
+            for in_val in range(len(self.meta.cats[attr])):
+                s = self.meta.cats[attr][in_val]
+                if allow_unrecognized_cat_vals:
+                    out_val = template_meta.cat_to_enum[attr][s] if s in template_meta.cat_to_enum[attr] else np.nan
+                else:
+                    out_val = template_meta.cat_to_enum[attr][s]
+                m[in_val] = out_val
+            attr_slice_tuple = (slice(None),) * n + cast(Tuple[Any], (attr,)) + (slice(None),) * (self.rank() - n - 1)
+            slice_of_self_to_remap = self.data[attr_slice_tuple]
+            with np.nditer(slice_of_self_to_remap, op_flags = ['readwrite']) as it:
+                for x in it:
+                    x[...] = m[int(x)]
+        self.meta = template_meta
 
     # Modifies both self and other such that their meta-data is aligned.
     # Raises an error if the meta-data cannot be aligned.
     def align_meta(self, other: 'Tensor') -> None:
-
-        # Check for basic compatibility
+        # Check for compatibility
         if self.meta.axis != other.meta.axis:
             raise ValueError('These two tensors have meta data on different axes')
         if self.data.shape[self.meta.axis or 0] != other.data.shape[other.meta.axis or 0]:
@@ -519,9 +583,9 @@ class Tensor():
                 l.append(self[i].to_list())
         elif self.rank() == 1:
             for i in range(self.data.shape[0]):
-                l.append(self.get((i,)))
+                l.append(self.get(i))
         else:
-            return self.get((0,))
+            return self.get(0)
         return l
 
 
@@ -583,18 +647,29 @@ class Tensor():
         for i in range(self.data.shape[self.meta.axis]):
             slice_list_in: List[Any] = [slice(None)] * len(self.data.shape)
             slice_list_in[self.meta.axis] = i
-            if self.meta.is_continuous(i) or self.meta.categories(i) == 2:
+            if self.meta.is_continuous(i):
                 # Copy straight over
                 slice_list_out: List[Any] = [slice(None)] * len(self.data.shape)
                 slice_list_out[self.meta.axis] = o
                 newdata[tuple(slice_list_out)] = self.data[tuple(slice_list_in)]
                 o += 1
+            elif self.meta.categories(i) == 2:
+                # Copy straight over, but replace NaNs with 0.5
+                slice_list_out = [slice(None)] * len(self.data.shape)
+                slice_list_out[self.meta.axis] = o
+                attr_vals = self.data[tuple(slice_list_in)]
+                attr_vals[np.where(np.isnan(attr_vals))] = 0.5
+                newdata[tuple(slice_list_out)] = attr_vals
+                o += 1
             else:
+                if self.meta.categories(i) > 300:
+                    raise ValueError(f'Attempted to one-hot encode {self.meta.names[i]}, an attribute with more than 300 categorical values!')
+
                 # Convert to a one-hot encoding
                 olddata = self.data[tuple(slice_list_in)] # isolate just the relevant attribute
                 it = np.nditer(olddata, flags=['multi_index']) # iterate over all the elements
                 while not it.finished:
-                    categorical_value = 0 if np.isnan(it[0]) else int(it[0]) # get the categorical value
+                    categorical_value = -1 if np.isnan(it[0]) else int(it[0]) # get the categorical value
                     if categorical_value >= 0 and categorical_value < self.meta.categories(i): # if the value is valid
                         hotindex = it.multi_index[:self.meta.axis] + (o + categorical_value,) + it.multi_index[self.meta.axis + 1:]
                         newdata[hotindex] = 1.
@@ -674,8 +749,8 @@ class Tensor():
         sorted = self.sort((-1, date_index))
 
         # Count the number of days in the specified range
-        start_date = datetime.datetime.strptime(sorted.get_string((0, date_index)), fmt)
-        last_date = datetime.datetime.strptime(sorted.get_string((-1, date_index)), fmt)
+        start_date = datetime.datetime.strptime(sorted.get_string(0, date_index), fmt)
+        last_date = datetime.datetime.strptime(sorted.get_string(-1, date_index), fmt)
         delta = datetime.timedelta(days = 1)
         rows: int = 0
         dt = start_date
@@ -691,10 +766,10 @@ class Tensor():
         dt = start_date # dt is the date of the destination row
         for i in range(rows): # i is the destination row
             res.data[i] = sorted.data[j] # copy from source to destination
-            prev_date = datetime.datetime.strptime(res.get_string((i, date_index)), fmt)
+            prev_date = datetime.datetime.strptime(res.get_string(i, date_index), fmt)
             if dt > prev_date: # Is interpolation needed here?
                 next_row = min(sorted.data.shape[0] - 1, j + 1)
-                next_date = datetime.datetime.strptime(sorted.get_string((next_row, date_index)), fmt)
+                next_date = datetime.datetime.strptime(sorted.get_string(next_row, date_index), fmt)
                 for k in range(res.data.shape[1]):
                     if res.meta.is_continuous(k):
                         # Interpolate the value (Note: there seems to be some rounding issues in the next line)
@@ -703,7 +778,7 @@ class Tensor():
 
             # Advance
             dt += delta # Advance the destination date
-            while j + 1 < sorted.data.shape[0] and datetime.datetime.strptime(sorted.get_string((j + 1, date_index)), fmt) <= dt:
+            while j + 1 < sorted.data.shape[0] and datetime.datetime.strptime(sorted.get_string(j + 1, date_index), fmt) <= dt:
                 j += 1 # Advance the source row past the destination date
         if res.data.shape[0] < self.data.shape[0]:
             raise ValueError('Made it smaller? Were there multiple values per day?')
@@ -722,7 +797,7 @@ class Tensor():
         date_index = self.meta.names.index('date')
         for i in range(self.data.shape[0]):
             val = int(self.data[i, date_index])
-            old_str = self.get_string((i, date_index))
+            old_str = self.get_string(i, date_index)
             d = datetime.datetime.strptime(old_str, '%m/%d/%Y')
             new_str = d.strftime('%Y/%m/%d')
             self.meta.cats[date_index][val] = new_str
@@ -741,7 +816,7 @@ class Tensor():
             d = {}
             for j in range(self.data.shape[1]):
                 if not drop_nans or not np.isnan(self.data[i, j]):
-                    d[self.meta.names[j]] = self.get((i, j))
+                    d[self.meta.names[j]] = self.get(i, j)
             obs.append(d)
         return obs
 
@@ -758,7 +833,7 @@ class Tensor():
         for i in range(self.data.shape[0]):
             l = []
             for j in range(self.data.shape[1]):
-                l.append(self.get((i, j)))
+                l.append(self.get(i, j))
             obs.append(l)
 
         # Make the meta data
@@ -784,14 +859,14 @@ class Tensor():
             if self.meta.is_continuous(i):
                 raw[self.meta.names[i]] = self.data[:, i]
             else:
-                vals = [self.get_string((j, i)) for j in range(self.data.shape[0])]
+                vals = [self.get_string(j, i) for j in range(self.data.shape[0])]
                 raw[self.meta.names[i]] = pd.Categorical(vals, ordered = True)
         if index:
             assert index.rank() == 1
             if index.meta.is_continuous(0):
                 raw[index.meta.names[0]] = index.data
             else:
-                vals = [index.get_string((j,)) for j in range(index.data.shape[0])]
+                vals = [index.get_string(j) for j in range(index.data.shape[0])]
                 raw[index.meta.names[0]] = pd.Categorical(vals, ordered = True)
         df = pd.DataFrame(raw)
         if index:
@@ -897,7 +972,6 @@ def load_arff(filename: str) -> Tensor:
 
 # Loads from a JSON format that is a list of tuples that redundantly repeat meta-data for every field
 def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
-
     # Extract metadata from the first row
     cats: List[List[str]] = []
     names: List[str] = []
@@ -926,30 +1000,41 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
 
 
 # Loads from a JSON format that is a list of list of values
-# An optional list of tuples may be supplied as metadata
-def from_list_of_list(obs: List[List[Any]], cols: Optional[List[Mapping[str, str]]]) -> Tensor:
+# An optional list of tuples may be supplied as metadata (type hints)
+def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, str]]]]) -> Tensor:
+    obs: List[List[Any]] = lol[0]
+    cols: Optional[List[Mapping[str, str]]] = lol[1]
 
     # Extract metadata
     cats: List[List[str]] = []
     names: List[str] = []
+    types: List[Union[str, None]] = []
     cat: List[bool] = [] # Used to check for consistency of types
-    if not cols is None:
+    if cols is not None:
         i = 0
         for attr in cols:
             names.append(attr['name'])
             cats.append([])
-            if isinstance(obs[0][i], str): cat.append(True)
-            else: cat.append(False)
+            types.append(attr['type'])
+            if attr['type'] == 'str' or attr['type'] == 'datetime64' or isinstance(obs[0][i], str):
+                cat.append(True)
+            elif attr['type'].startswith('float'):
+                cat.append(False)
+            else:
+                raise ValueError(f'unexpected type {attr["type"]} for column {attr["name"]}')
             i += 1
     else:
         for i in range(len(obs[0])):
             cats.append([])
             names.append('attr_' + str(i))
-            if isinstance(obs[0][i], str): cat.append(True)
-            else: cat.append(False)
+            types.append(None)
+            if isinstance(obs[0][i], str):
+                cat.append(True)
+            else:
+                cat.append(False)
 
     # Extract all the data
-    t = Tensor(np.zeros((len(obs), len(names))), MetaData(1, names, cats))
+    t = Tensor(np.zeros((len(obs), len(names))), MetaData(1, names, cats, types))
     t.data[:] = np.nan
     row = 0
     for ob in obs:
