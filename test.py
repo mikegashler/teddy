@@ -80,6 +80,7 @@ class TestTeddy():
         expected = 'color:[blue, red, blue, green]'
         helpful_assert(str(t[:, 1]), expected)
         helpful_assert(str(t[:, 'color']), expected)
+        helpful_assert(str(t[:, 'color']), expected)
 
         expected = ('   color \n'
                     '[[ blue]\n'
@@ -102,6 +103,19 @@ class TestTeddy():
                     ' [  2016/3/3, 8.8]]\n')
         helpful_assert(str(t[:, ['date', 'units']]), expected)
 
+        expected = ('         date \n'
+                    '[[2016/02/26]\n'
+                    ' [2016/02/28]\n'
+                    ' [2016/03/02]\n'
+                    ' [  2016/3/3]]\n')
+        helpful_assert(str(t[:, ['date']]), expected)
+
+        expected = ('[[]\n'
+                    ' []\n'
+                    ' []\n'
+                    ' []]\n')
+        helpful_assert(str(t[:, []]), expected)
+
         expected = ('         date  color unit \n'
                     '[[2016/02/28,   red, 4.4]\n'
                     ' [  2016/3/3, green, 8.8]]\n')
@@ -112,6 +126,8 @@ class TestTeddy():
                     ' [2016/03/02,  blue]\n'
                     ' [  2016/3/3, green]]\n')
         helpful_assert(str(t[1:, :2]), expected)
+
+
 
     def test_to_list(self) -> None:
         t = td.init_2d([
@@ -168,11 +184,12 @@ class TestTeddy():
         # Test that it can also handle NaNs correctly
         t.data[0, 3] = np.nan
         t.data[0, 4] = np.nan
+        t.data[2, 0] = np.nan
         t.data[2, 1] = np.nan
         expecte2 = ('  attr blue red_ gree attr3 attr appl carr bana grap \n'
                     '[[0.0, 1.0, 0.0, 0.0, 20.0, 0.5, 0.0, 0.0, 0.0, 0.0]\n'
                     ' [0.1, 0.0, 1.0, 0.0, 30.0, 1.0, 0.0, 1.0, 0.0, 0.0]\n'
-                    ' [0.2, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 1.0, 0.0]\n'
+                    ' [nan, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 1.0, 0.0]\n'
                     ' [0.3, 0.0, 1.0, 0.0, 10.0, 0.0, 0.0, 0.0, 0.0, 1.0]]\n')
         actua2 = str(t.one_hot())
         helpful_assert(actua2, expecte2)
@@ -345,7 +362,9 @@ class TestTeddy():
         a = td.init_2d([
             ('num', 'color', 'val'),
             (    4,  'pink',  88.8),
+            (    3,  'pink',  44.4),
             ])
+        a.data[1, 1] = np.nan
         b = td.init_2d([
             ('num', 'color', 'val'),
             (    5,  'blue',  3.14),
@@ -359,7 +378,8 @@ class TestTeddy():
         if c.meta.cat_to_enum[1]['green'] != 1:
             raise ValueError('Unexpected mapped value')
         expected = ('   num colo   val \n'
-                    '[[4.0, NaN, 88.8]]\n')
+                    '[[4.0, NaN, 88.8]\n'
+                    ' [3.0, NaN, 44.4]]\n')
         helpful_assert(str(c), expected)
 
     def run_all_tests(self) -> None:

@@ -250,7 +250,7 @@ class Tensor():
                 newdata = self.data[new_slices]
                 newmeta = self.meta[new_slices]
                 return Tensor(newdata, newmeta)
-            elif isinstance(args[attr], list) and isinstance(args[attr][0], str): # If attributes are specified as a list of names
+            elif isinstance(args[attr], list) and len(args[attr]) > 0 and isinstance(args[attr][0], str): # If attributes are specified as a list of names
                 attr_names = args[attr]
                 attr_indexes = [self.meta.names.index(name) for name in attr_names]
                 new_slices = tuple([attr_indexes if i == attr else args[i] for i in range(len(args))])
@@ -503,7 +503,7 @@ class Tensor():
             slice_of_self_to_remap = self.data[attr_slice_tuple]
             with np.nditer(slice_of_self_to_remap, op_flags = ['readwrite']) as it:
                 for x in it:
-                    x[...] = m[int(x)]
+                    x[...] = np.nan if np.isnan(x) else m[int(x)]
         self.meta = template_meta
 
     # Modifies both self and other such that their meta-data is aligned.
