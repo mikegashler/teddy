@@ -506,73 +506,65 @@ class Tensor():
                     x[...] = np.nan if np.isnan(x) else m[int(x)]
         self.meta = template_meta
 
-    # Modifies both self and other such that their meta-data is aligned.
-    # Raises an error if the meta-data cannot be aligned.
-    def align_meta(self, other: 'Tensor') -> None:
+    # Modifies all tensors in the list to have the same metadata.
+    # Continuous attributes will not be modified.
+    # The names of categorical values will remain the same, but the underlying representations
+    # will be made uniform across all the tensors.
+    @staticmethod
+    def align_meta(tensors: List['Tensor']) -> None:
         # Check for compatibility
-        if self.meta.axis != other.meta.axis:
-            raise ValueError('These two tensors have meta data on different axes')
-        if self.data.shape[self.meta.axis or 0] != other.data.shape[other.meta.axis or 0]:
-            raise ValueError('These two tensors have different sizes on their meta axes')
-        for attr in range(self.data.shape[self.meta.axis or 0]):
-            if self.meta.is_continuous(attr) != other.meta.is_continuous(attr):
-                raise ValueError('These two tensors have mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
+        if(len(tensors) < 2):
+            return
+        n = tensors[0].meta.axis or 0
+        for t in range(1, len(tensors)):
+            if tensors[t].meta.axis != tensors[0].meta.axis:
+                raise ValueError('Tensors have meta data on different axes')
+            if tensors[t].data.shape[tensors[t].meta.axis or 0] != tensors[0].data.shape[n]:
+                raise ValueError('Tensors have different sizes on their meta axes')
+            for attr in range(tensors[t].data.shape[n]):
+                if tensors[t].meta.is_continuous(attr) != tensors[0].meta.is_continuous(attr):
+                    raise ValueError('Tensors have mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
 
         # Align
-        for attr in range(self.data.shape[self.meta.axis or 0]):
+        for attr in range(tensors[0].data.shape[n]):
+            if tensors[0].meta.is_continuous(attr):
+                continue
 
             # Sort the categories
-            if self.meta.is_continuous(attr): continue
-            order_self = sort_order(self.meta.cats[attr])
-            cats_self = [self.meta.cats[attr][i] for i in order_self]
-            half_self = sort_order(order_self)
-            order_other = sort_order(other.meta.cats[attr])
-            cats_other = [other.meta.cats[attr][i] for i in order_other]
-            half_other = sort_order(order_other)
+            order: List[List[int]] = [ sort_order(tensors[t].meta.cats[attr]) for t in range(len(tensors)) ]
+            cats: List[List[str]] = [ [ tensors[t].meta.cats[attr][i] for i in order[t] ] for t in range(len(tensors)) ]
 
             # Merge the categories
-            it_self = 0
-            it_other = 0
+            it: List[int] = [0 for t in range(len(tensors))]
             merged: List[str] = []
-            map_self: Dict[int, int] = {}
-            map_other: Dict[int, int] = {}
-            while it_self < len(cats_self) or it_other < len(cats_other):
-                if it_other >= len(cats_other):
-                    map_self[order_self[it_self]] = len(merged)
-                    merged.append(cats_self[it_self])
-                    it_self += 1
-                elif it_self >= len(cats_self):
-                    map_other[order_other[it_other]] = len(merged)
-                    merged.append(cats_other[it_other])
-                    it_other += 1
-                elif cats_self[it_self] < cats_other[it_other]:
-                    map_self[order_self[it_self]] = len(merged)
-                    merged.append(cats_self[it_self])
-                    it_self += 1
-                elif cats_other[it_other] < cats_self[it_self]:
-                    map_other[order_other[it_other]] = len(merged)
-                    merged.append(cats_other[it_other])
-                    it_other += 1
-                else:
-                    map_self[order_self[it_self]] = len(merged)
-                    map_other[order_other[it_other]] = len(merged)
-                    merged.append(cats_self[it_self])
-                    it_self += 1
-                    it_other += 1
-            self.meta.cats[attr] = merged
-            other.meta.cats[attr] = merged
+            maps: List[Dict[int, int]] = [ {} for t in tensors ]
+            while True:
+                # Find the first remaining category in alphabetical order
+                min_index = -1
+                for t in range(len(tensors)):
+                    if it[t] < len(cats[t]):
+                        if min_index < 0 or cats[t][it[t]] < cats[min_index][it[min_index]]:
+                            min_index = t
+                if min_index < 0:
+                    break
+
+                # Advance all matching iterators
+                cat = cats[min_index][it[min_index]]
+                for t in range(len(tensors)):
+                    if it[t] < len(cats[t]) and cats[t][it[t]] == cat:
+                        maps[t][order[t][it[t]]] = len(merged)
+                        it[t] += 1
+                merged.append(cat)
+            for t in range(len(tensors)):
+                tensors[t].meta.cats[attr] = merged
 
             # Remap the data
-            n = self.meta.axis or 0
-            attr_slice_tuple = (slice(None),) * n + cast(Tuple[Any], (attr,)) + (slice(None),) * (self.rank() - n - 1)
-            slice_of_self_to_remap = self.data[attr_slice_tuple]
-            with np.nditer(slice_of_self_to_remap, op_flags = ['readwrite']) as it:
-                for x in it:
-                    x[...] = map_self[int(x)]
-            slice_of_other_to_remap = other.data[attr_slice_tuple]
-            with np.nditer(slice_of_other_to_remap, op_flags = ['readwrite']) as it:
-                for x in it:
-                    x[...] = map_other[int(x)]
+            for t in range(len(tensors)):
+                attr_slice_tuple = (slice(None),) * n + cast(Tuple[Any], (attr,)) + (slice(None),) * (tensors[t].rank() - n - 1)
+                slice_to_remap = tensors[t].data[attr_slice_tuple]
+                with np.nditer(slice_to_remap, op_flags = ['readwrite']) as iter:
+                    for x in iter:
+                        x[...] = maps[t][int(x)]
 
 
     # Converts this tensor to raw Python structures
@@ -907,7 +899,7 @@ def from_pandas(df: Union[pd.DataFrame, pd.Series]) -> Tensor:
         cats = [[]]
         t = Tensor(np.zeros(len(df)), MetaData(0, names, cats))
         for i in range(len(df)):
-            t.insert((i), df[i])
+            t.insert((i,), df[i])
         return t
     elif isinstance(df, np.ndarray): # Not really a Pandas type, but some Pandas methods return them
         if len(df.shape) == 1:
@@ -1001,6 +993,12 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
 
 # Loads from a JSON format that is a list of list of values
 # An optional list of tuples may be supplied as metadata (type hints)
+# Example without type hints:
+# ([[ 2, 'dog' ],
+#   [ 1, 'cat' ]], None)
+# Example with type hints:
+# ([[ 2, 'dog' ],
+#   [ 1, 'cat' ]], [{'quantity':'float', 'animal':'str'])
 def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, str]]]]) -> Tensor:
     obs: List[List[Any]] = lol[0]
     cols: Optional[List[Mapping[str, str]]] = lol[1]
@@ -1043,6 +1041,28 @@ def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, str
                 if cat[col]: t.insert_string((row, col), ob[col])
                 else: t.data[row, col] = ob[col]
         row += 1
+    return t
+
+
+# Loads a CSV file. Returns a Tensor.
+def load_csv(filename: str, column_names_in_first_row: bool = True) -> Tensor:
+    with open(filename, 'r') as f:
+        names: List[str] = []
+        if column_names_in_first_row:
+            line = f.readline()
+            if not line:
+                raise ValueError('Expected a line of column names')
+            names = [ s.strip() for s in line.split(',') ]
+        lol: List[List[Any]] = []
+        while True:
+            line = f.readline()
+            if not line:
+                break
+            vals = [ s.strip() for s in line.split(',') ]
+            lol.append(vals)
+    t = from_list_of_list((lol, None))
+    if len(names) > 0:
+        t.meta.names = names
     return t
 
 
@@ -1128,12 +1148,5 @@ def concat(parts: List[Tensor], axis: int) -> Tensor:
         newdata = np.concatenate([p.data for p in parts], axis = axis)
         return Tensor(newdata, newmeta)
     else:
-        if len(parts) == 2:
-            parts[0].align_meta(parts[1])
-        elif len(parts) > 2:
-            # Two passes will ensure that all values have been propagated to all parts
-            for i in range(1, len(parts)):
-                parts[0].align_meta(parts[i])
-            for i in range(1, len(parts) - 1):
-                parts[0].align_meta(parts[i])
+        Tensor.align_meta(parts)
         return Tensor(np.concatenate([p.data for p in parts], axis = axis), parts[0].meta)

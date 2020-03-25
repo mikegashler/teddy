@@ -80,7 +80,6 @@ class TestTeddy():
         expected = 'color:[blue, red, blue, green]'
         helpful_assert(str(t[:, 1]), expected)
         helpful_assert(str(t[:, 'color']), expected)
-        helpful_assert(str(t[:, 'color']), expected)
 
         expected = ('   color \n'
                     '[[ blue]\n'
@@ -126,8 +125,6 @@ class TestTeddy():
                     ' [2016/03/02,  blue]\n'
                     ' [  2016/3/3, green]]\n')
         helpful_assert(str(t[1:, :2]), expected)
-
-
 
     def test_to_list(self) -> None:
         t = td.init_2d([
@@ -312,6 +309,52 @@ class TestTeddy():
                     ' [3.0, cat, 6.0,   cat]]\n')
         helpful_assert(str(td.concat([a, b], 1)), expected)
 
+    def test_concat_many(self) -> None:
+        a = td.init_2d([
+            ('num', 'animal'),
+            (    1,  'cat'),
+            (    2,  'dog'),
+            (    3,  'cat'),
+            ])
+        b = td.init_2d([
+            ('num', 'animal'),
+            (    4,  'mouse'),
+            (    5,  'mouse'),
+            (    6,  'cat'),
+            ])
+        c = td.init_2d([
+            ('num', 'animal'),
+            (    7,  'giraffe'),
+            (    8,  'bear'),
+            (    9,  'ant'),
+            ])
+        d = td.init_2d([
+            ('num', 'animal'),
+            (   10,  'ant'),
+            (   11,  'mouse'),
+            (   12,  'cat'),
+            ])
+
+        expected = ('    num   animal \n'
+                    '[[ 1.0,     cat]\n'
+                    ' [ 2.0,     dog]\n'
+                    ' [ 3.0,     cat]\n'
+                    ' [ 4.0,   mouse]\n'
+                    ' [ 5.0,   mouse]\n'
+                    ' [ 6.0,     cat]\n'
+                    ' [ 7.0, giraffe]\n'
+                    ' [ 8.0,    bear]\n'
+                    ' [ 9.0,     ant]\n'
+                    ' [10.0,     ant]\n'
+                    ' [11.0,   mouse]\n'
+                    ' [12.0,     cat]]\n')
+
+        all = td.concat([a, b, c, d], 0)
+        helpful_assert(str(all), expected)
+        assert len(all.meta.cats[1]) == 6 # six unique animals
+        assert all.data[8, 1] == 0 # 'ant'
+        assert all.data[3, 1] == 5 # 'mouse'
+
     def test_transpose(self) -> None:
         t = td.init_2d([
             ('num', 'color', 'val'),
@@ -363,6 +406,7 @@ class TestTeddy():
             ('num', 'color', 'val'),
             (    4,  'pink',  88.8),
             (    3,  'pink',  44.4),
+            (    2,   'red',  22.2),
             ])
         a.data[1, 1] = np.nan
         b = td.init_2d([
@@ -379,7 +423,8 @@ class TestTeddy():
             raise ValueError('Unexpected mapped value')
         expected = ('   num colo   val \n'
                     '[[4.0, NaN, 88.8]\n'
-                    ' [3.0, NaN, 44.4]]\n')
+                    ' [3.0, NaN, 44.4]\n'
+                    ' [2.0, red, 22.2]]\n')
         helpful_assert(str(c), expected)
 
     def run_all_tests(self) -> None:
@@ -418,6 +463,7 @@ class TestTeddy():
 
         print("Testing concat...")
         self.test_concat()
+        self.test_concat_many()
 
         print("Testing transpose...")
         self.test_transpose()
