@@ -427,55 +427,72 @@ class TestTeddy():
                     ' [2.0, red, 22.2]]\n')
         helpful_assert(str(c), expected)
 
+    def test_mean(self) -> None:
+        a = td.init_2d([
+            ('a','b','c'),
+            (  4,  6,  8),
+            (  2,  5,  5),
+            (  3,  7,  5),
+            ])
+        expected1 = ('mean:5.0')
+        helpful_assert(str(a.mean()), expected1)
+        expected2 = ('[a:3.0, b:6.0, c:6.0]')
+        helpful_assert(str(a.mean(axis=0)), expected2)
+        expected3 = ('mean:[6.0, 4.0, 5.0]')
+        helpful_assert(str(a.mean(axis=1)), expected3)
+
     def run_all_tests(self) -> None:
-        print("Testing rank 0 tensors...")
+        print('Testing rank 0 tensors...')
         self.test_rank0_tensors()
 
-        print("Testing categorical representations...")
+        print('Testing categorical representations...')
         self.test_categorical_representations()
 
-        print("Testing slicing...")
+        print('Testing slicing...')
         self.test_slicing()
 
-        print("Testing to_list...")
+        print('Testing to_list...')
         self.test_to_list()
 
-        print("Testing normalizing...")
+        print('Testing normalizing...')
         self.test_normalizing()
 
-        print("Testing one hot encoding...")
+        print('Testing one hot encoding...')
         self.test_one_hot()
 
-        print("Testing expand_dims...")
+        print('Testing expand_dims...')
         self.test_expand_dims()
 
-        print("Testing sorting...")
+        print('Testing sorting...')
         self.test_sorting()
 
-        print("Testing Pandas conversion...")
+        print('Testing Pandas conversion...')
         self.test_pandas_conversion()
 
-        print("Testing from_column_mapping...")
+        print('Testing from_column_mapping...')
         self.test_from_column_mapping()
 
-        print("Testing load_arff...")
+        print('Testing load_arff...')
         self.test_load_arff()
 
-        print("Testing concat...")
+        print('Testing concat...')
         self.test_concat()
         self.test_concat_many()
 
-        print("Testing transpose...")
+        print('Testing transpose...')
         self.test_transpose()
 
-        print("Testing print nans...")
+        print('Testing print nans...')
         self.test_print_nans()
 
-        print("Testing remap_cat_vals...")
+        print('Testing remap_cat_vals...')
         self.test_remap_cat_vals()
         self.test_remap_cat_vals_missing()
 
-        print("Passed all tests!")
+        print('Testing mean...')
+        self.test_mean()
+
+        print('Passed all tests!')
 
 
 tt = TestTeddy()
