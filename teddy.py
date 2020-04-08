@@ -1036,52 +1036,71 @@ def load_json_list_of_dict(filename: str) -> Tensor:
 # Continuous attributes will not be modified.
 # The names of categorical values will remain the same, but the underlying representations
 # will be made uniform across all the tensors.
-def align_meta(tensors: List['Tensor']) -> None:
+# If template is provided, the tensors will be aligned with it instead.
+# The template will not be modified, so novel categorical values in the tensors will be set to NaN.
+def align_meta(tensors: List['Tensor'], template: Optional[MetaData] = None) -> None:
     # Check for compatibility
-    if(len(tensors) < 2):
-        return
-    n = tensors[0].meta.axis or 0
-    for t in range(1, len(tensors)):
-        if tensors[t].meta.axis != tensors[0].meta.axis:
-            raise ValueError('Tensors have meta data on different axes')
-        if tensors[t].data.shape[tensors[t].meta.axis or 0] != tensors[0].data.shape[n]:
-            raise ValueError('Tensors have different sizes on their meta axes')
-        for attr in range(tensors[t].data.shape[n]):
-            if tensors[t].meta.is_continuous(attr) != tensors[0].meta.is_continuous(attr):
-                raise ValueError('Tensors have mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
+    if template is not None:
+        n = template.axis or 0
+        for t in range(len(tensors)):
+            if tensors[t].meta.axis != template.axis:
+                raise ValueError('Tensors have meta data on different axes from the template')
+            if tensors[t].data.shape[tensors[t].meta.axis or 0] != len(template.names):
+                raise ValueError('Tensors have different sizes on their meta axes than the template')
+            for attr in range(tensors[t].data.shape[n]):
+                if tensors[t].meta.is_continuous(attr) != template.is_continuous(attr):
+                    raise ValueError('Tensors have mismatching data types from template in attribute ' + str(attr))
+    else:
+        if(len(tensors) < 2):
+            return
+        n = tensors[0].meta.axis or 0
+        for t in range(1, len(tensors)):
+            if tensors[t].meta.axis != tensors[0].meta.axis:
+                raise ValueError('Tensors have meta data on different axes')
+            if tensors[t].data.shape[tensors[t].meta.axis or 0] != tensors[0].data.shape[n]:
+                raise ValueError('Tensors have different sizes on their meta axes')
+            for attr in range(tensors[t].data.shape[n]):
+                if tensors[t].meta.is_continuous(attr) != tensors[0].meta.is_continuous(attr):
+                    raise ValueError('Tensors have mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
 
     # Align
     for attr in range(tensors[0].data.shape[n]):
         if tensors[0].meta.is_continuous(attr):
             continue
 
-        # Sort the categories
-        order: List[List[int]] = [ sort_order(tensors[t].meta.cats[attr]) for t in range(len(tensors)) ]
-        cats: List[List[str]] = [ [ tensors[t].meta.cats[attr][i] for i in order[t] ] for t in range(len(tensors)) ]
-
-        # Merge the categories
-        it: List[int] = [0 for t in range(len(tensors))]
-        merged: List[str] = []
         maps: List[Dict[int, int]] = [ {} for t in tensors ]
-        while True:
-            # Find the first remaining category in alphabetical order
-            min_index = -1
-            for t in range(len(tensors)):
-                if it[t] < len(cats[t]):
-                    if min_index < 0 or cats[t][it[t]] < cats[min_index][it[min_index]]:
-                        min_index = t
-            if min_index < 0:
-                break
+        if template is not None:
+            for i, tensor in enumerate(tensors):
+                for j, cat in enumerate(tensor.meta.cats[attr]):
+                    maps[i][j] = template.cats[attr].index(cat) if cat in template.cats[attr] else -1
+                tensor.meta = template.deepcopy()
+        else:
+            # Sort the categories
+            order: List[List[int]] = [ sort_order(tensors[t].meta.cats[attr]) for t in range(len(tensors)) ]
+            cats: List[List[str]] = [ [ tensors[t].meta.cats[attr][i] for i in order[t] ] for t in range(len(tensors)) ]
 
-            # Advance all matching iterators
-            cat = cats[min_index][it[min_index]]
+            # Merge the categories
+            it: List[int] = [0 for t in range(len(tensors))]
+            merged: List[str] = []
+            while True:
+                # Find the first remaining category in alphabetical order
+                min_index = -1
+                for t in range(len(tensors)):
+                    if it[t] < len(cats[t]):
+                        if min_index < 0 or cats[t][it[t]] < cats[min_index][it[min_index]]:
+                            min_index = t
+                if min_index < 0:
+                    break
+
+                # Advance all matching iterators
+                cat = cats[min_index][it[min_index]]
+                for t in range(len(tensors)):
+                    if it[t] < len(cats[t]) and cats[t][it[t]] == cat:
+                        maps[t][order[t][it[t]]] = len(merged)
+                        it[t] += 1
+                merged.append(cat)
             for t in range(len(tensors)):
-                if it[t] < len(cats[t]) and cats[t][it[t]] == cat:
-                    maps[t][order[t][it[t]]] = len(merged)
-                    it[t] += 1
-            merged.append(cat)
-        for t in range(len(tensors)):
-            tensors[t].meta.cats[attr] = merged
+                tensors[t].meta.cats[attr] = merged
 
         # Remap the data
         for t in range(len(tensors)):
@@ -1089,7 +1108,7 @@ def align_meta(tensors: List['Tensor']) -> None:
             slice_to_remap = tensors[t].data[attr_slice_tuple]
             with np.nditer(slice_to_remap, op_flags = ['readwrite']) as iter:
                 for x in iter:
-                    x[...] = np.nan if np.isnan(x) else maps[t][int(x)]
+                    x[...] = np.nan if (np.isnan(x) or maps[t][int(x)] < 0) else maps[t][int(x)]
 
 # Concatenates multiple tensors along the specified axis
 def concat(parts: List[Tensor], axis: int) -> Tensor:

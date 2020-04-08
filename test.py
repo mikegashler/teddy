@@ -280,6 +280,27 @@ class TestTeddy():
                         ' [ 0.0,   dog]]\n')
             helpful_assert(str(t), expected)
 
+    def test_align_meta(self) -> None:
+        template = td.MetaData(1, ['c0'], [['apple', 'carrot']])
+        t = td.init_2d([
+            ('c0',),
+            ('banana',),
+            ('carrot',),
+            ('apple',),
+            ])
+        td.align_meta([t], template)
+        if not np.isnan(t.data[0, 0]):
+            raise ValueError('expected nan')
+        if t.data[1, 0] != 1:
+            raise ValueError('expected 1, got ' + str(t.data[1, 0]))
+        if t.data[2, 0] != 0:
+            raise ValueError('expected 0, got ' + str(t.data[2, 0]))
+        expected = ('       c0 \n'
+                    '[[   NaN]\n'
+                    ' [carrot]\n'
+                    ' [ apple]]\n')
+        helpful_assert(str(t), expected)
+
     def test_concat(self) -> None:
         a = td.init_2d([
             ('num', 'animal'),
@@ -474,6 +495,9 @@ class TestTeddy():
 
         print('Testing load_arff...')
         self.test_load_arff()
+
+        print('Testing align_meta')
+        self.test_align_meta()
 
         print('Testing concat...')
         self.test_concat()
