@@ -43,6 +43,18 @@ class MetaData(object):
                 t[attr_cats[i]] = i
             self.cat_to_enum.append(t)
 
+    def marshall(self) -> Mapping[str, Any]:
+        return {
+            'axis': self.axis,
+            'names': self.names,
+            'cats': self.cats,
+            'types': self.types,
+        }
+
+    @staticmethod
+    def unmarshall(ob: Mapping[str, Any]) -> 'MetaData':
+        return MetaData(ob['axis'], ob['names'], ob['cats'], ob['types'])
+
     # Returns a deep copy of this object
     def deepcopy(self) -> 'MetaData':
         return MetaData(
@@ -52,18 +64,34 @@ class MetaData(object):
             copy.deepcopy(self.types)
         )
 
+    # Returns True iff self has the same values as other.
+    # If strict is False, then the ordering of columns and categorical values will be ignored.
+    def is_equal(self, other: 'MetaData', strict: bool=True) -> bool:
+        if self is other: return True
+        self.complete(max(len(self.names), len(self.cats), len(self.types)))
+        other.complete(max(len(other.names), len(other.cats), len(other.types)))
+        if len(self.names) != len(other.names): return False
+        if strict:
+            if self.names != other.names: return False
+            if self.cats != other.cats: return False
+        else:
+            if set(self.names) != set(other.names): return False
+            for i in range(len(self.cats)):
+                if set(self.cats[i]) != set(other.cats[i]): return False
+        return True
+
     # Ensures that the meta data is fully specified
     def complete(self, size: int) -> None:
-        while len(self.cats) < size:
-            self.cats.append([])
         while len(self.names) < size:
             self.names.append('attr_' + str(len(self.names)))
+        while len(self.cats) < size:
+            self.cats.append([])
         while len(self.types) < size:
             self.types.append(None)
 
     # Returns metadata sorted with the specified order
     def sort(self, order: List[int]) -> 'MetaData':
-        self.complete(max(order))
+        self.complete(len(order))
         newcats = [self.cats[i] for i in order]
         newnames = [self.names[i] for i in order]
         newtypes = [self.types[i] for i in order]
@@ -801,11 +829,11 @@ class Tensor():
 
     # Wraps numpy.mean
     def mean(self, axis:Optional[int]=None) -> 'Tensor':
-        return Tensor(self.data.mean(axis=axis), self.meta.reduce('mean', axis))
+        return Tensor(np.nanmean(self.data, axis=axis), self.meta.reduce('mean', axis))
 
     # Wraps numpy.std
     def std(self, axis:Optional[int]=None) -> 'Tensor':
-        return Tensor(self.data.std(axis=axis), self.meta.reduce('std', axis))
+        return Tensor(np.nanstd(self.data, axis=axis), self.meta.reduce('std', axis))
 
 
 
@@ -893,30 +921,18 @@ def load_arff(filename: str) -> Tensor:
 
 # Loads from a JSON format that is a list of tuples that redundantly repeat meta-data for every field
 def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
-    # Extract metadata from the first row
-    cats: List[List[str]] = []
-    names: List[str] = []
-    cat: List[bool] = [] # Used to check for consistency of types
-    if isinstance(obs[0], dict):
-        for k in obs[0]:
-            cats.append([])
-            names.append(k)
-            if isinstance(obs[0][k], str): cat.append(True)
-            else: cat.append(False)
-    else:
-        raise ValueError('Unrecognized format')
+    # extract column names (may have missing data in any single row)
+    names = sorted(list(set(x for row in obs for x in row)))
 
-    # Extract all the data
-    t = Tensor(np.zeros((len(obs), len(names))), MetaData(1, names, cats))
-    t.data[:] = np.nan
-    row = 0
-    for ob in obs:
-        col = 0
-        for k in ob:
-            if cat[col]: t.insert_string((row, col), ob[k])
-            else: t.data[row, col] = ob[k]
-            col += 1
-        row += 1
+    # extract the data into a tensor
+    t = Tensor(np.full((len(obs), len(names)), np.nan), MetaData(1, names))
+    for r, ob in enumerate(obs):
+        for c, k in enumerate(names):
+            if k in ob:
+                if isinstance(ob[k], str):
+                    t.insert_string((r, c), ob[k])
+                else:
+                    t.data[r, c] = ob[k]
     return t
 
 # Loads from a JSON format that is a list of list of values
