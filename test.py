@@ -301,6 +301,74 @@ class TestTeddy():
                     ' [ apple]]\n')
         helpful_assert(str(aligned[0]), expected)
 
+
+    def test_align2(self) -> None:
+        t0 = td.init_2d([
+            ('num', 'animal'),
+            (    1,  'cat'),
+            (    2,  'dog'),
+            (    3,  'cat'),
+            ])
+        t1 = td.init_2d([
+            ('animal', 'num', 'age'),
+            (   'cat',     0,    23),
+            (  'bear',     4,    19),
+            ])
+        t2 = td.init_2d([
+            ('animal', 'owner'),
+            (   'cat',   'Bob'),
+            ( 'mouse',   'Sam'),
+            ])
+        aligned = td.align([t0, t1, t2])
+        expected0 = ('   age anim  num owne \n'
+                     '[[nan, cat, 1.0, NaN]\n'
+                     ' [nan, dog, 2.0, NaN]\n'
+                     ' [nan, cat, 3.0, NaN]]\n')
+        helpful_assert(str(aligned[0]), expected0)
+        expected1 = ('    age anima  num owne \n'
+                     '[[23.0,  cat, 0.0, NaN]\n'
+                     ' [19.0, bear, 4.0, NaN]]\n')
+        helpful_assert(str(aligned[1]), expected1)
+        expected2 = ('   age animal  num owne \n'
+                     '[[nan,   cat, nan, Bob]\n'
+                     ' [nan, mouse, nan, Sam]]\n')
+        helpful_assert(str(aligned[2]), expected2)
+            
+
+    def test_align3(self) -> None:
+        template = td.MetaData(1, ['animal', 'owner'], [['cat', 'dog', 'mouse'], ['Albert', 'Sam']])
+        t0 = td.init_2d([
+            ('num', 'animal'),
+            (    1,  'cat'),
+            (    2,  'dog'),
+            (    3,  'cat'),
+            ])
+        t1 = td.init_2d([
+            ('animal', 'num', 'age'),
+            (   'cat',     0,    23),
+            (  'bear',     4,    19),
+            ])
+        t2 = td.init_2d([
+            ('animal', 'owner'),
+            (   'cat',   'Bob'),
+            ( 'mouse',   'Sam'),
+            ])
+        aligned = td.align([t0, t1, t2], template)
+        expected0 = ('  anim owne \n'
+                     '[[cat, NaN]\n'
+                     ' [dog, NaN]\n'
+                     ' [cat, NaN]]\n')
+        helpful_assert(str(aligned[0]), expected0)
+        expected1 = ('  anim owne \n'
+                     '[[cat, NaN]\n'
+                     ' [NaN, NaN]]\n')
+        helpful_assert(str(aligned[1]), expected1)
+        expected2 = ('  animal owne \n'
+                     '[[  cat, NaN]\n'
+                     ' [mouse, Sam]]\n')
+        helpful_assert(str(aligned[2]), expected2)
+            
+
     def test_concat(self) -> None:
         a = td.init_2d([
             ('num', 'animal'),
@@ -514,6 +582,8 @@ class TestTeddy():
 
         print('Testing align')
         self.test_align()
+        self.test_align2()
+        self.test_align3()
 
         print('Testing concat...')
         self.test_concat()

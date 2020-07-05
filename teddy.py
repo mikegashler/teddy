@@ -1169,9 +1169,10 @@ def align(tensors: List['Tensor'], template: Optional[MetaData] = None) -> List[
             # Map from old categorical values to new categorical values
             maps: List[Dict[int, int]] = [ {} for t in tensors ]
             for i, t in enumerate(tensors):
-                attr_src_index = t.meta.names.index(attr_name)
-                for j, cat in enumerate(t.meta.cats[attr_src_index]):
-                    maps[i][j] = all_cats[attr_dest_index].index(cat) if cat in all_cats[attr_dest_index] else -1
+                if attr_name in t.meta.names:
+                     attr_src_index = t.meta.names.index(attr_name)
+                     for j, cat in enumerate(t.meta.cats[attr_src_index]):
+                         maps[i][j] = all_cats[attr_dest_index].index(cat) if cat in all_cats[attr_dest_index] else -1
 
             # Remap the values of this categorical attribute
             for i in range(len(tensors)):
