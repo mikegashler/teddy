@@ -280,7 +280,7 @@ class TestTeddy():
                         ' [ 0.0,   dog]]\n')
             helpful_assert(str(t), expected)
 
-    def test_align_meta(self) -> None:
+    def test_align(self) -> None:
         template = td.MetaData(1, ['c0'], [['apple', 'carrot']])
         t = td.init_2d([
             ('c0',),
@@ -288,18 +288,18 @@ class TestTeddy():
             ('carrot',),
             ('apple',),
             ])
-        td.align_meta([t], template)
-        if not np.isnan(t.data[0, 0]):
+        aligned = td.align([t], template)
+        if not np.isnan(aligned[0].data[0, 0]):
             raise ValueError('expected nan')
-        if t.data[1, 0] != 1:
-            raise ValueError('expected 1, got ' + str(t.data[1, 0]))
-        if t.data[2, 0] != 0:
-            raise ValueError('expected 0, got ' + str(t.data[2, 0]))
+        if aligned[0].data[1, 0] != 1:
+            raise ValueError('expected 1, got ' + str(aligned[0].data[1, 0]))
+        if aligned[0].data[2, 0] != 0:
+            raise ValueError('expected 0, got ' + str(aligned[0].data[2, 0]))
         expected = ('       c0 \n'
                     '[[   NaN]\n'
                     ' [carrot]\n'
                     ' [ apple]]\n')
-        helpful_assert(str(t), expected)
+        helpful_assert(str(aligned[0]), expected)
 
     def test_concat(self) -> None:
         a = td.init_2d([
@@ -315,20 +315,26 @@ class TestTeddy():
             (    6,  'cat'),
             ])
 
-        expected = ('   num animal \n'
-                    '[[1.0,   cat]\n'
-                    ' [2.0,   dog]\n'
-                    ' [3.0,   cat]\n'
-                    ' [4.0,   cat]\n'
-                    ' [5.0, mouse]\n'
-                    ' [6.0,   cat]]\n')
+        expected = ('  animal  num \n'
+                    '[[  cat, 1.0]\n'
+                    ' [  dog, 2.0]\n'
+                    ' [  cat, 3.0]\n'
+                    ' [  cat, 4.0]\n'
+                    ' [mouse, 5.0]\n'
+                    ' [  cat, 6.0]]\n')
         helpful_assert(str(td.concat([a, b], 0)), expected)
 
-        expected = ('   num anim  num animal \n'
+        c = td.init_2d([
+            ('xxx', '_nimal'),
+            (    4,  'cat'),
+            (    5,  'mouse'),
+            (    6,  'cat'),
+            ])
+        expected = ('   num anim  xxx _nimal \n'
                     '[[1.0, cat, 4.0,   cat]\n'
                     ' [2.0, dog, 5.0, mouse]\n'
                     ' [3.0, cat, 6.0,   cat]]\n')
-        helpful_assert(str(td.concat([a, b], 1)), expected)
+        helpful_assert(str(td.concat([a, c], 1)), expected)
 
     def test_concat_many(self) -> None:
         a = td.init_2d([
@@ -338,10 +344,10 @@ class TestTeddy():
             (    3,  'cat'),
             ])
         b = td.init_2d([
-            ('num', 'animal'),
-            (    4,  'mouse'),
-            (    5,  'mouse'),
-            (    6,  'cat'),
+            ('animal', 'num'),
+            ('mouse',  4),
+            ('mouse',  5),
+            (  'cat',  6),
             ])
         c = td.init_2d([
             ('num', 'animal'),
@@ -356,25 +362,24 @@ class TestTeddy():
             (   12,  'cat'),
             ])
 
-        expected = ('    num   animal \n'
-                    '[[ 1.0,     cat]\n'
-                    ' [ 2.0,     dog]\n'
-                    ' [ 3.0,     cat]\n'
-                    ' [ 4.0,   mouse]\n'
-                    ' [ 5.0,   mouse]\n'
-                    ' [ 6.0,     cat]\n'
-                    ' [ 7.0, giraffe]\n'
-                    ' [ 8.0,    bear]\n'
-                    ' [ 9.0,     ant]\n'
-                    ' [10.0,     ant]\n'
-                    ' [11.0,   mouse]\n'
-                    ' [12.0,     cat]]\n')
-
+        expected = ('    animal   num \n'
+                    '[[    cat,  1.0]\n'
+                    ' [    dog,  2.0]\n'
+                    ' [    cat,  3.0]\n'
+                    ' [  mouse,  4.0]\n'
+                    ' [  mouse,  5.0]\n'
+                    ' [    cat,  6.0]\n'
+                    ' [giraffe,  7.0]\n'
+                    ' [   bear,  8.0]\n'
+                    ' [    ant,  9.0]\n'
+                    ' [    ant, 10.0]\n'
+                    ' [  mouse, 11.0]\n'
+                    ' [    cat, 12.0]]\n')
         all = td.concat([a, b, c, d], 0)
         helpful_assert(str(all), expected)
-        assert len(all.meta.cats[1]) == 6 # six unique animals
-        assert all.data[8, 1] == 0 # 'ant'
-        assert all.data[3, 1] == 5 # 'mouse'
+        assert len(all.meta.cats[0]) == 6 # six unique animals
+        assert all.data[8, 0] == 0 # 'ant'
+        assert all.data[3, 0] == 5 # 'mouse'
 
     def test_transpose(self) -> None:
         t = td.init_2d([
@@ -462,6 +467,17 @@ class TestTeddy():
         expected3 = ('mean:[6.0, 4.0, 5.0]')
         helpful_assert(str(a.mean(axis=1)), expected3)
 
+    def test_json(self) -> None:
+        a = td.init_2d([
+            ('num', 'color', 'val'),
+            (    4,  'pink',  88.8),
+            (    3,  'pink',  44.4),
+            (    2,   'red',  22.2),
+            ])
+        a.save_json('tmp.json')
+        b = td.load_json('tmp.json')
+        helpful_assert(str(a), str(b))
+
     def run_all_tests(self) -> None:
         print('Testing rank 0 tensors...')
         self.test_rank0_tensors()
@@ -496,8 +512,8 @@ class TestTeddy():
         print('Testing load_arff...')
         self.test_load_arff()
 
-        print('Testing align_meta')
-        self.test_align_meta()
+        print('Testing align')
+        self.test_align()
 
         print('Testing concat...')
         self.test_concat()
@@ -515,6 +531,9 @@ class TestTeddy():
 
         print('Testing mean...')
         self.test_mean()
+
+        print('Testing json...')
+        self.test_json()
 
         print('Passed all tests!')
 

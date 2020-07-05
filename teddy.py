@@ -9,6 +9,7 @@ import scipy.io.arff as arff
 import copy
 import json
 import datetime
+import os
 
 
 def sort_order(l: List[Any]) -> List[int]:
@@ -32,6 +33,8 @@ class MetaData(object):
         assert axis is None or axis >= 0, 'The axis must be canonicalized before it is passed to the MetaData constructor' # data.shape is needed to canonicalize, so it cannot be done here
         self.axis = axis
         self.names = list(names) if names else []
+        if len(set(self.names)) < len(self.names):
+            raise ValueError('Duplicate attribute names!')
         self.cats = [ list(c) for c in cats ] if cats else [ [] for _ in range(len(self.names)) ]
         self.types = list(types) if types else [ None for _ in range(len(self.names)) ]
         if axis is None and (len(self.names) > 1 or len(self.cats) > 1 or len(self.types) > 1):
@@ -97,7 +100,7 @@ class MetaData(object):
         newtypes = [self.types[i] for i in order]
         return MetaData(self.axis, newnames, newcats, newtypes)
 
-    # Returns the numerical representation of the specified string given the specified axis
+    # Returns the numerical representation of the specified string given the specified attribute
     def to_val(self, attr: int, s: str) -> int:
         if self.axis is None:
             attr = 0 # if axis is None, the metadata applies to every axis
@@ -686,15 +689,12 @@ class Tensor():
     # Returns an tensor with the dates in sorted order with exactly one row for each day.
     # Missing categorical values will be carried over from the previous entry.
     # Missing continuous values will be interpolated.
-    def fill_missing_dates(self) -> 'Tensor':
-
-        # Check assumptions
+    def fill_missing_dates(self, col_name: str='date', fmt: str='%Y/%m/%d') -> 'Tensor':
         if self.rank() != 2: raise ValueError('Expected a rank 2 tensor')
         if self.meta.axis != 1: raise ValueError('Expected metadata along axis 1')
-        fmt = '%Y/%m/%d'
 
         # Sort by date
-        date_index = self.meta.names.index('date')
+        date_index = self.meta.names.index(col_name)
         sorted = self.sort((-1, date_index))
 
         # Count the number of days in the specified range
@@ -732,6 +732,23 @@ class Tensor():
         if res.data.shape[0] < self.data.shape[0]:
             raise ValueError('Made it smaller? Were there multiple values per day?')
         return res
+
+    # Assumes the specified column contains dates in YY-MM-DD format.
+    # Assumes the specified column contains at least two consecutive dates followed by NaNs.
+    # Replaces all the NaNs in that column by extrapolating the last interval.
+    def extrapolate_dates_inplace(self, col_name: str='date', fmt: str='%Y-%m-%d') -> None:
+        if self.rank() != 2: raise ValueError('Expected a rank 2 tensor')
+        if self.meta.axis != 1: raise ValueError('Expected metadata along axis 1')
+        date_col = self.meta.names.index(col_name)
+        fill_start: int = next((i for i in reversed(range(self.data.shape[0])) if not np.isnan(self.data[i, date_col])), None) # type: ignore
+        if fill_start < 2:
+            raise ValueError('Not enough known dates to determine the interval')
+        a = datetime.datetime.strptime(self.get_string(fill_start - 2, date_col), fmt)
+        b = datetime.datetime.strptime(self.get_string(fill_start - 1, date_col), fmt)
+        delta = b - a
+        for i in range(fill_start, self.data.shape[0]):
+            prev = datetime.datetime.strptime(self.get_string(i - 1, date_col), fmt)
+            self.insert_string((i, date_col), (prev + delta).strftime(fmt))
 
     # Convert all dates in the "date" column from US to ISO format.
     # Assumes each date is unique.
@@ -788,6 +805,16 @@ class Tensor():
             meta.append({ 'name': self.meta.names[col], 'type': 'float64' if self.meta.is_continuous(col) else 'str' })
 
         return obs, meta
+
+    # Writes this tensor to a file in JSON format
+    def save_json(self, filename: str) -> None:
+        ob = {
+            'meta': self.meta.marshall(),
+            'data': self.data.tolist(),
+        }
+        b = bytes(json.dumps(ob), 'utf8')
+        with open(filename, mode='wb+') as file:
+            file.write(b)
 
     # Adds a dimension to self
     def expand_dims(self, axis: int) -> 'Tensor':
@@ -1008,6 +1035,17 @@ def load_csv(filename: str, column_names_in_first_row: bool = True) -> Tensor:
         t.meta.names = names
     return t
 
+def load_by_extension(filename: str) -> Tensor:
+    _, ext = os.path.splitext(filename)
+    if ext == '.arff':
+        return load_arff(filename)
+    elif ext == '.csv':
+        return load_csv(filename)
+    elif ext == '.json':
+        return load_json(filename)
+    else:
+        raise ValueError('Unrecognized extension: ' + ext)
+
 # Loads from a map of columns.
 # For example, this input:
 # { 'numbers': [1,2,3,4], 'letters': ['a', 'b', 'c', 'd'] }
@@ -1048,83 +1086,106 @@ def load_json_list_of_dict(filename: str) -> Tensor:
     obs = json.loads(filecontents)
     return from_list_of_dict(obs)
 
-# Modifies all tensors in the list to have the same metadata.
-# Continuous attributes will not be modified.
-# The names of categorical values will remain the same, but the underlying representations
-# will be made uniform across all the tensors.
-# If template is provided, the tensors will be aligned with it instead.
-# The template will not be modified, so novel categorical values in the tensors will be set to NaN.
-def align_meta(tensors: List['Tensor'], template: Optional[MetaData] = None) -> None:
-    # Check for compatibility
+# Parses JSON from a string
+def parse_json(s: Union[str, bytes]) -> Tensor:
+    ob = json.loads(s)
+    return Tensor(np.array(ob['data']), MetaData.unmarshall(ob['meta']))
+
+# Loads from a JSON file
+def load_json(filename: str) -> Tensor:
+    filecontents = None
+    with open(filename, mode='rb') as file:
+        filecontents = file.read()
+    return parse_json(filecontents)
+
+# Modifies a list of tensors to all have uniform metadata.
+# If template metadata is provided, the resulting tensors will have the template metadata.
+# If no template is provided, the resulting tensors will have the metadata of the union of all the tensors.
+def align(tensors: List['Tensor'], template: Optional[MetaData] = None) -> List['Tensor']:
+    # Check for matching meta axes
+    for i in range(1, len(tensors)):
+        if tensors[i].meta.axis != tensors[0].meta.axis:
+            raise ValueError('Tensors have meta data on different axes')
     if template is not None:
-        n = template.axis or 0
-        for t in range(len(tensors)):
-            if tensors[t].meta.axis != template.axis:
-                raise ValueError('Tensors have meta data on different axes from the template')
-            if tensors[t].data.shape[tensors[t].meta.axis or 0] != len(template.names):
-                raise ValueError('Tensors have different sizes on their meta axes than the template')
-            for attr in range(tensors[t].data.shape[n]):
-                if tensors[t].meta.is_continuous(attr) != template.is_continuous(attr):
-                    raise ValueError('Tensors have mismatching data types from template in attribute ' + str(attr))
+        if tensors[0].meta.axis != template.axis:
+            raise ValueError('Tensors have meta data on different axes from the template')
     else:
         if(len(tensors) < 2):
-            return
-        n = tensors[0].meta.axis or 0
-        for t in range(1, len(tensors)):
-            if tensors[t].meta.axis != tensors[0].meta.axis:
-                raise ValueError('Tensors have meta data on different axes')
-            if tensors[t].data.shape[tensors[t].meta.axis or 0] != tensors[0].data.shape[n]:
-                raise ValueError('Tensors have different sizes on their meta axes')
-            for attr in range(tensors[t].data.shape[n]):
-                if tensors[t].meta.is_continuous(attr) != tensors[0].meta.is_continuous(attr):
-                    raise ValueError('Tensors have mismatching data types (one is continuous and one is categorical) in attribute ' + str(attr))
+            return tensors
+    n = tensors[0].meta.axis or 0
 
-    # Align
-    for attr in range(tensors[0].data.shape[n]):
-        if tensors[0].meta.is_continuous(attr):
-            continue
+    # Check if they are already aligned
+    already_aligned = True
+    for i in range(1, len(tensors)):
+        if tensors[i].meta.names != tensors[0].meta.names or tensors[i].meta.cats != tensors[0].meta.cats:
+            already_aligned = False
+            break
+    if template is not None:
+        if tensors[0].meta.names != template.names or tensors[0].meta.cats != template.cats:
+            already_aligned = False
+    if already_aligned:
+        return tensors
 
-        maps: List[Dict[int, int]] = [ {} for t in tensors ]
-        if template is not None:
-            for i, tensor in enumerate(tensors):
-                for j, cat in enumerate(tensor.meta.cats[attr]):
-                    maps[i][j] = template.cats[attr].index(cat) if cat in template.cats[attr] else -1
-                tensor.meta = template.deepcopy()
-        else:
-            # Sort the categories
-            order: List[List[int]] = [ sort_order(tensors[t].meta.cats[attr]) for t in range(len(tensors)) ]
-            cats: List[List[str]] = [ [ tensors[t].meta.cats[attr][i] for i in order[t] ] for t in range(len(tensors)) ]
+    # Get lists of all attribute names and categorical values
+    if template is not None:
+        all_names: List[str] = template.names
+        all_cats: List[List[str]] = template.cats
+    else:
+        raw_names = [t.meta.names for t in tensors]
+        all_names = list(set().union(*raw_names)) # type: ignore
+        all_names.sort()
+        all_cats = [
+            list(set().union(*[(t.meta.cats[t.meta.names.index(attr_name)] if attr_name in t.meta.names else []) for t in tensors])) # type: ignore
+            for attr_name in all_names
+        ]
+        for c in all_cats:
+            c.sort()
 
-            # Merge the categories
-            it: List[int] = [0 for t in range(len(tensors))]
-            merged: List[str] = []
-            while True:
-                # Find the first remaining category in alphabetical order
-                min_index = -1
-                for t in range(len(tensors)):
-                    if it[t] < len(cats[t]):
-                        if min_index < 0 or cats[t][it[t]] < cats[min_index][it[min_index]]:
-                            min_index = t
-                if min_index < 0:
-                    break
+    # Make an aligned slice for every attribue for every tensor
+    slices: List[List[np.ndarray]] = [[] for t in tensors]
+    for attr_dest_index, attr_name in enumerate(all_names):
+        # Get a slice for this attribute in each tensor
+        type_is_known = template is not None
+        type_is_continuous = template.is_continuous(attr_dest_index) if template is not None else False
+        for i, t in enumerate(tensors):
+            if attr_name in t.meta.names:
+                # Grab existing slice
+                attr_src_index = t.meta.names.index(attr_name)
+                if type_is_known and t.meta.is_continuous(attr_src_index) != type_is_continuous:
+                    raise ValueError("Tensors have mismatching data types")
+                type_is_known = True
+                type_is_continuous = t.meta.is_continuous(attr_src_index)
+                slice_tuple = (slice(None),) * n + (slice(attr_src_index, attr_src_index + 1),) + (slice(None),) * (t.rank() - n - 1)
+                s = t.data[slice_tuple]
+            else:
+                # Make a new slice
+                slice_shape = t.data.shape[:n] + (1,) + t.data.shape[n+1:]
+                s = np.empty(slice_shape)
+                s.fill(np.nan)
+            slices[i].append(s)
 
-                # Advance all matching iterators
-                cat = cats[min_index][it[min_index]]
-                for t in range(len(tensors)):
-                    if it[t] < len(cats[t]) and cats[t][it[t]] == cat:
-                        maps[t][order[t][it[t]]] = len(merged)
-                        it[t] += 1
-                merged.append(cat)
-            for t in range(len(tensors)):
-                tensors[t].meta.cats[attr] = merged
+        # Align categorical attributes
+        if not type_is_continuous:
+            # Map from old categorical values to new categorical values
+            maps: List[Dict[int, int]] = [ {} for t in tensors ]
+            for i, t in enumerate(tensors):
+                attr_src_index = t.meta.names.index(attr_name)
+                for j, cat in enumerate(t.meta.cats[attr_src_index]):
+                    maps[i][j] = all_cats[attr_dest_index].index(cat) if cat in all_cats[attr_dest_index] else -1
 
-        # Remap the data
-        for t in range(len(tensors)):
-            attr_slice_tuple = (slice(None),) * n + cast(Tuple[Any], (attr,)) + (slice(None),) * (tensors[t].rank() - n - 1)
-            slice_to_remap = tensors[t].data[attr_slice_tuple]
-            with np.nditer(slice_to_remap, op_flags = ['readwrite']) as iter:
-                for x in iter:
-                    x[...] = np.nan if (np.isnan(x) or maps[t][int(x)] < 0) else maps[t][int(x)]
+            # Remap the values of this categorical attribute
+            for i in range(len(tensors)):
+                with np.nditer(slices[i][attr_dest_index], op_flags = ['readwrite']) as iter:
+                    for x in iter:
+                        x[...] = np.nan if (np.isnan(x) or maps[i][int(x)] < 0) else maps[i][int(x)]
+
+    # Concatenate the slices together to make the final list of tensors
+    results: List['Tensor'] = []
+    for i in range(len(tensors)):
+        data = np.concatenate(slices[i], axis = tensors[0].meta.axis)
+        meta = MetaData(tensors[0].meta.axis, all_names, all_cats)
+        results.append(Tensor(data, meta))
+    return results
 
 # Concatenates multiple tensors along the specified axis
 def concat(parts: List[Tensor], axis: int) -> Tensor:
@@ -1133,25 +1194,16 @@ def concat(parts: List[Tensor], axis: int) -> Tensor:
     if len(parts) == 0:
         raise ValueError('Expected at least one part')
     if len(parts) == 1:
-            return parts[0]
+        return parts[0]
     for i in range(1, len(parts)):
         if parts[i].meta.axis != parts[0].meta.axis:
             raise ValueError('Expected all parts to have the same meta axis')
         for j in range(len(parts[0].data.shape)):
-            if j != axis and parts[i].data.shape[j] != parts[0].data.shape[j]:
+            if j != axis and j != parts[0].meta.axis and parts[i].data.shape[j] != parts[0].data.shape[j]:
                 raise ValueError('Expected all parts to have the same shape except along the joining axis')
-        if axis != parts[0].meta.axis:
-            for j in range(len(parts[0].meta.cats)):
-                if parts[0].meta.is_continuous(j):
-                    if not parts[i].meta.is_continuous(j):
-                        raise ValueError('Expected all parts to have matching meta data')
-                else:
-                    if parts[i].meta.is_continuous(j):
-                        raise ValueError('Expected all parts to have matching meta data')
 
     # Concatenate the parts
     if axis == parts[0].meta.axis:
-
         # Complete the metadata, so concatenating them will stay aligned
         for i in range(len(parts) - 1):
             parts[i].meta.complete(parts[i].data.shape[parts[i].meta.axis])
@@ -1166,5 +1218,5 @@ def concat(parts: List[Tensor], axis: int) -> Tensor:
         newdata = np.concatenate([p.data for p in parts], axis = axis)
         return Tensor(newdata, newmeta)
     else:
-        align_meta(parts)
-        return Tensor(np.concatenate([p.data for p in parts], axis = axis), parts[0].meta)
+        aligned_parts = align(parts)
+        return Tensor(np.concatenate([p.data for p in aligned_parts], axis = axis), aligned_parts[0].meta)
