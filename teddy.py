@@ -361,7 +361,7 @@ class Tensor():
             if self.rank() == 0: # Single element
                 # Actually, I don't think this case ever occurs because numpy doesn't allow zero-rank tensors
                 # Oh well, doesn't hurt to support it just in case they ever decide to fix that.
-                assert self.meta.axis is None
+                assert self.meta.axis is None, 'non-existent axis'
                 s = ''
                 s += self.meta.names[0] + ':'
                 return s + self.meta.to_str(0, self.data)
@@ -428,7 +428,7 @@ class Tensor():
                             break
                 return s
         else: # Single value
-            assert self.meta.axis is None
+            assert self.meta.axis is None, 'meta data on missing axis'
             s = ''
             s += self.meta.names[0] + ':'
             return s + self.meta.to_str(0, self.data)
@@ -547,14 +547,16 @@ class Tensor():
 
     # Extends this tensor along the specified axis by adding zeros.
     # Extending on the axis with meta data is not currently supported.
-    def extend_inplace(self, axis: int, amount: int) -> None:
+    def extend_inplace(self, axis: int, amount: int, fill_value: Optional[float] = None) -> None:
         axis = self.axis_index(axis)
         if amount <= 0:
             if amount == 0: return
             else: raise ValueError('Negative extensions are not allowed. Just use slicing')
         if axis == self.meta.axis: raise ValueError('Sorry, extending along the meta axis is not allowed')
         extension_shape = self.data.shape[ : axis] + (amount,) + self.data.shape[axis + 1 : ]
-        extension = np.zeros(extension_shape)
+        extension = np.empty(extension_shape)
+        if fill_value is not None:
+            extension.fill(fill_value)
         self.data = np.concatenate([self.data, extension], axis)
 
     # Normalizes (in place) all of the non-categorical attributes to fall in the range [0., 1.]
@@ -637,7 +639,7 @@ class Tensor():
     # Reorders slices along the specified axis according to the specified order
     def reorder(self, axis: int, sort_order: List[int]) -> 'Tensor':
         axis = self.axis_index(axis)
-        assert(len(sort_order) == self.data.shape[axis])
+        assert(len(sort_order) == self.data.shape[axis]), 'order data wrong length'
 
         # Sort the data
         slice_list_out: List[Any] = []
@@ -785,7 +787,7 @@ class Tensor():
         return obs
 
     # Converts this tensor to a list of list of values, and some meta data
-    def to_list_of_list(self) -> Tuple[List[List[Any]], List[Dict[str, str]]]:
+    def to_list_of_list(self) -> Tuple[List[List[Any]], List[Dict[str, Union[str, None]]]]:
 
         # Check assumptions
         if self.rank() != 2: raise ValueError('Expected a rank 2 tensor')
@@ -802,7 +804,7 @@ class Tensor():
         # Make the meta data
         meta = []
         for col in range(self.data.shape[1]):
-            meta.append({ 'name': self.meta.names[col], 'type': 'float64' if self.meta.is_continuous(col) else 'str' })
+            meta.append({ 'name': self.meta.names[col], 'type': self.meta.types[col] })
 
         return obs, meta
 
@@ -834,7 +836,7 @@ class Tensor():
                 vals = [self.get_string(j, i) for j in range(self.data.shape[0])]
                 raw[self.meta.names[i]] = pd.Categorical(vals, ordered = True)
         if index:
-            assert index.rank() == 1
+            assert index.rank() == 1, 'expected rank one data here'
             if index.meta.is_continuous(0):
                 raw[index.meta.names[0]] = index.data
             else:
@@ -848,7 +850,7 @@ class Tensor():
 
     # Transposes a 2-tensor
     def transpose(self) -> 'Tensor':
-        assert len(self.data.shape) == 2
+        assert len(self.data.shape) == 2, 'Transpose only works with matrices'
         new_data = np.transpose(self.data)
         new_meta = self.meta.deepcopy()
         new_meta.axis = new_meta.axis if new_meta.axis is None else 1 - new_meta.axis
@@ -862,7 +864,21 @@ class Tensor():
     def std(self, axis:Optional[int]=None) -> 'Tensor':
         return Tensor(np.nanstd(self.data, axis=axis), self.meta.reduce('std', axis))
 
-
+    # Prints in CSV format with column names in the first row
+    def print_csv(self) -> None:
+        if self.rank() != 2 or self.meta.axis != 1:
+            raise ValueError('Expected a rank 2 tensor with meta axis 1')
+        print(self.meta.names[0], end='')
+        for v in self.meta.names[1:]:
+            print(',' + v, end='')
+        print()
+        for y in range(self.data.shape[0]):
+            if not np.isnan(self.data[y, 0]):
+                print(self.get_string(y, 0), end='')
+            for x in range(1, self.data.shape[1]):
+                if not np.isnan(self.data[y, x]):
+                    print(',' + self.get_string(y, x), end='')
+            print()
 
 
 
@@ -970,25 +986,30 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
 # Example with type hints:
 # ([[ 2, 'dog' ],
 #   [ 1, 'cat' ]], [{'quantity':'float', 'animal':'str'])
-def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, str]]]]) -> Tensor:
-    obs: List[List[Any]] = lol[0]
-    cols: Optional[List[Mapping[str, str]]] = lol[1]
+def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, Optional[str]]]]]) -> Tensor:
+    obs = lol[0]
+    cols = lol[1]
 
     # Extract metadata
     cats: List[List[str]] = []
     names: List[str] = []
     types: List[Union[str, None]] = []
-    cat: List[bool] = [] # Used to check for consistency of types
+    cat: List[int] = [] # Used to check for consistency of types
     if cols is not None:
         i = 0
         for attr in cols:
-            names.append(attr['name'])
+            name = attr['name']
+            assert name, 'no name?'
+            names.append(name)
             cats.append([])
-            types.append(attr['type'])
+            type = attr['type']
+            types.append(type)
             if attr['type'] == 'str' or attr['type'] == 'datetime64' or isinstance(obs[0][i], str):
-                cat.append(True)
-            elif attr['type'].startswith('float'):
-                cat.append(False)
+                cat.append(1)
+            elif attr['type'] is not None and attr['type'].startswith('float'):
+                cat.append(0)
+            elif attr['type'] == None:
+                cat.append(-1)
             else:
                 raise ValueError(f'unexpected type {attr["type"]} for column {attr["name"]}')
             i += 1
@@ -997,20 +1018,27 @@ def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, str
             cats.append([])
             names.append('attr_' + str(i))
             types.append(None)
-            if isinstance(obs[0][i], str):
-                cat.append(True)
-            else:
-                cat.append(False)
+            cat.append(-1)
 
     # Extract all the data
     t = Tensor(np.zeros((len(obs), len(names))), MetaData(1, names, cats, types))
     t.data[:] = np.nan
     row = 0
     for ob in obs:
-        for col in range(len(ob)):
+        for col in range(min(len(ob), len(cat))):
             if ob[col] is not None:
-                if cat[col]: t.insert_string((row, col), ob[col])
-                else: t.data[row, col] = ob[col]
+                if cat[col] == 0:
+                    t.data[row, col] = ob[col]
+                elif cat[col] > 0:
+                    t.insert_string((row, col), ob[col])
+                else:
+                    try:
+                        t.data[row, col] = float(ob[col])
+                        cat[col] = 0
+                    except:
+                        t.insert_string((row, col), ob[col])
+                        cat[col] = 1
+
         row += 1
     return t
 
@@ -1024,12 +1052,31 @@ def load_csv(filename: str, column_names_in_first_row: bool = True) -> Tensor:
                 raise ValueError('Expected a line of column names')
             names = [ s.strip() for s in line.split(',') ]
         lol: List[List[Any]] = []
+        types = [-1 for n in names]
         while True:
             line = f.readline()
             if not line:
                 break
-            vals = [ s.strip() for s in line.split(',') ]
-            lol.append(vals)
+            vals: List[Any] = []
+            for i, s in enumerate(line.split(',')):
+                if i >= len(types):
+                    break
+                s = s.strip()
+                if s == '' or s == 'NaN' or s == 'nan':
+                    vals.append(np.nan)
+                elif types[i] == 0:
+                    vals.append(float(s))
+                elif types[i] > 0:
+                    vals.append(s)
+                else:
+                    try:
+                        vals.append(float(s))
+                        types[i] = 0
+                    except:
+                        vals.append(s)
+                        types[i] = 1
+            if len(vals) > 0:
+                lol.append(vals)
     t = from_list_of_list((lol, None))
     if len(names) > 0:
         t.meta.names = names
@@ -1060,7 +1107,7 @@ def from_column_mapping(cols: Mapping[str, Any]) -> Tensor:
             arr = np.zeros(len(cols[k]))
         else:
             arr = np.array(cols[k]).astype(np.float64)
-        assert len(arr.shape) == 1
+        assert len(arr.shape) == 1, 'not a column'
         arrs.append(np.expand_dims(arr, 1))
     data = np.concatenate(arrs, 1)
     t = Tensor(data, MetaData(1, names))
@@ -1190,7 +1237,6 @@ def align(tensors: List['Tensor'], template: Optional[MetaData] = None) -> List[
 
 # Concatenates multiple tensors along the specified axis
 def concat(parts: List[Tensor], axis: int) -> Tensor:
-
     # Check assumptions
     if len(parts) == 0:
         raise ValueError('Expected at least one part')
@@ -1221,3 +1267,42 @@ def concat(parts: List[Tensor], axis: int) -> Tensor:
     else:
         aligned_parts = align(parts)
         return Tensor(np.concatenate([p.data for p in aligned_parts], axis = axis), aligned_parts[0].meta)
+
+# Joins two tensors to have the attributes of all of them.
+# If any attributes have conflicting names, the tensor that occurs first in the list will override.
+# If the tensors do not have the same sizes, they will be extended with nans.
+def join(parts: List[Tensor]) -> Tensor:
+    if len(parts) < 2:
+        return parts[0]
+
+    # Compute the new shape and drop redundant attributes
+    new_shape = list(parts[0].data.shape)
+    all_attr_names = set(parts[0].meta.names)
+    for i in range(1, len(parts)):
+        part = parts[i]
+        if len(part.data.shape) != len(new_shape): raise ValueError('Different ranks')
+        if part.meta.axis != parts[0].meta.axis: raise ValueError('Different meta axes')
+        for j in range(len(new_shape)):
+            if j == parts[0].meta.axis:
+                continue
+            new_shape[j] = max(new_shape[j], part.data.shape[j])
+        unique_names = []
+        for name in part.meta.names:
+            if not name in all_attr_names:
+                unique_names.append(name)
+                all_attr_names.add(name)
+        if len(unique_names) < len(part.meta.names):
+            n = part.meta.axis or 0
+            slices = cast(Tuple[Any], (slice(None),) * n) + cast(Tuple[Any], (unique_names,)) + cast(Tuple[Any], (slice(None),) * (parts[i].rank() - n - 1))
+            parts[i] = part[slices]
+
+    # Extend as needed
+    for i in range(len(parts)):
+        part = parts[i]
+        for j in range(len(new_shape)):
+            if j != part.meta.axis and part.data.shape[j] < new_shape[j]:
+                part.extend_inplace(j, new_shape[j] - part.data.shape[j], np.nan)
+        parts[i] = part
+
+    # Concatenate
+    return concat(parts, part.meta.axis or 0)

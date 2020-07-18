@@ -191,7 +191,6 @@ class TestTeddy():
         actua2 = str(t.one_hot())
         helpful_assert(actua2, expecte2)
 
-
     def test_sorting(self) -> None:
         t = td.init_2d([
             ('num', 'color', 'val'),
@@ -301,7 +300,6 @@ class TestTeddy():
                     ' [ apple]]\n')
         helpful_assert(str(aligned[0]), expected)
 
-
     def test_align2(self) -> None:
         t0 = td.init_2d([
             ('num', 'animal'),
@@ -333,7 +331,6 @@ class TestTeddy():
                      '[[nan,   cat, nan, Bob]\n'
                      ' [nan, mouse, nan, Sam]]\n')
         helpful_assert(str(aligned[2]), expected2)
-            
 
     def test_align3(self) -> None:
         template = td.MetaData(1, ['animal', 'owner'], [['cat', 'dog', 'mouse'], ['Albert', 'Sam']])
@@ -367,7 +364,6 @@ class TestTeddy():
                      '[[  cat, NaN]\n'
                      ' [mouse, Sam]]\n')
         helpful_assert(str(aligned[2]), expected2)
-            
 
     def test_concat(self) -> None:
         a = td.init_2d([
@@ -448,6 +444,27 @@ class TestTeddy():
         assert len(all.meta.cats[0]) == 6 # six unique animals
         assert all.data[8, 0] == 0 # 'ant'
         assert all.data[3, 0] == 5 # 'mouse'
+
+    def test_join(self) -> None:
+        a = td.init_2d([
+            (      'date', 'animal'),
+            ('2020-01-02',   'cat'),
+            ('2020-01-03',   'dog'),
+            ('2020-01-04',   'cat'),
+            ('2020-01-05',   'cat'),
+            ])
+        b = td.init_2d([
+            (      'date', 'units'),
+            ('2020-01-02',       2),
+            ('2020-01-03',       3),
+            ])
+        c = td.join([a, b])
+        expected = ('         date anim unit \n'
+                    '[[2020-01-02, cat, 2.0]\n'
+                    ' [2020-01-03, dog, 3.0]\n'
+                    ' [2020-01-04, cat, nan]\n'
+                    ' [2020-01-05, cat, nan]]\n')
+        helpful_assert(str(c), expected)
 
     def test_transpose(self) -> None:
         t = td.init_2d([
@@ -588,6 +605,9 @@ class TestTeddy():
         print('Testing concat...')
         self.test_concat()
         self.test_concat_many()
+
+        print('Testing join...')
+        self.test_join()
 
         print('Testing transpose...')
         self.test_transpose()
