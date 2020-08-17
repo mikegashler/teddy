@@ -448,13 +448,20 @@ class Tensor():
         return self.meta.to_str(coords[attr], self.data[coords])
 
     # Returns the element at the specified coordinates.
-    def get(self, *coords: int) -> Union[float, str]:
+    def get(self, *coords: Union[int, str]) -> Union[float, str]:
         attr = self.meta.axis or 0
-        if self.meta.is_continuous(coords[attr]):
-            v = self.get_float(*coords)
+        for i, x in enumerate(coords):
+            if isinstance(x, str) and i != attr:
+                raise ValueError('only the meta access can be accessed by string')
+        int_coords = [
+            self.meta.names.index(x) if isinstance(x, str) else x
+            for x in coords
+        ]
+        if self.meta.is_continuous(int_coords[attr]):
+            v = self.get_float(*int_coords)
             return v
         else:
-            s = self.get_string(*coords)
+            s = self.get_string(*int_coords)
             return s
 
     # Sets a categorical value by string.
@@ -545,13 +552,14 @@ class Tensor():
             return self.get(0)
         return l
 
-    # Extends this tensor along the specified axis by adding zeros.
+    # Extends this tensor along the specified axis.
     # Extending on the axis with meta data is not currently supported.
+    # If fill_value is None, the new rows will be uninitialized.
     def extend_inplace(self, axis: int, amount: int, fill_value: Optional[float] = None) -> None:
-        axis = self.axis_index(axis)
         if amount <= 0:
             if amount == 0: return
             else: raise ValueError('Negative extensions are not allowed. Just use slicing')
+        axis = self.axis_index(axis)
         if axis == self.meta.axis: raise ValueError('Sorry, extending along the meta axis is not allowed')
         extension_shape = self.data.shape[ : axis] + (amount,) + self.data.shape[axis + 1 : ]
         extension = np.empty(extension_shape)
@@ -691,7 +699,7 @@ class Tensor():
     # Returns an tensor with the dates in sorted order with exactly one row for each day.
     # Missing categorical values will be carried over from the previous entry.
     # Missing continuous values will be interpolated.
-    def fill_missing_dates(self, col_name: str='date', fmt: str='%Y/%m/%d') -> 'Tensor':
+    def fill_missing_dates(self, col_name: str='date', fmt: str='%Y-%m-%d') -> 'Tensor':
         if self.rank() != 2: raise ValueError('Expected a rank 2 tensor')
         if self.meta.axis != 1: raise ValueError('Expected metadata along axis 1')
 
@@ -876,7 +884,9 @@ class Tensor():
             if not np.isnan(self.data[y, 0]):
                 print(self.get_string(y, 0), end='')
             for x in range(1, self.data.shape[1]):
-                if not np.isnan(self.data[y, x]):
+                if np.isnan(self.data[y, x]):
+                    print(',', end='')
+                else:
                     print(',' + self.get_string(y, x), end='')
             print()
 
