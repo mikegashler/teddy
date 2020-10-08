@@ -552,6 +552,18 @@ class TestTeddy():
         expected3 = ('mean:[6.0, 4.0, 5.0]')
         helpful_assert(str(a.mean(axis=1)), expected3)
 
+    def test_check_cats(self) -> None:
+        a = td.init_2d([
+            ('num', 'color', 'val'),
+            (    4,  'pink',  88.8),
+            (    3,  'pink',  44.4),
+            (    2,   'red',  22.2),
+            ])
+        assert a.check_cats() # positive test
+        a.data[1, 1] = 3
+        ok = False
+        assert not a.check_cats(quiet=True) # negative test
+
     def test_json(self) -> None:
         a = td.init_2d([
             ('num', 'color', 'val'),
@@ -624,6 +636,9 @@ class TestTeddy():
 
         print('Testing json...')
         self.test_json()
+
+        print('Testing check_cats...')
+        self.test_check_cats()
 
         print('Passed all tests!')
 

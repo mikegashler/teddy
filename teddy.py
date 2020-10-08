@@ -891,6 +891,34 @@ class Tensor():
             print()
 
 
+    # Add a column of data
+    def add_column(self, data: np.ndarray, name: str, cats: Optional[List[str]] = None) -> None:
+        if self.rank() != 2 or self.meta.axis != 1:
+            raise ValueError('Expected a rank 2 tensor with meta axis 1')
+        if len(data.shape) != 1 or data.shape[0] != self.data.shape[0]:
+            raise ValueError('Expected a compatible column vector')
+        self.meta.names.append(name)
+        self.meta.cats.append(cats or [])
+        self.meta.types.append(None)
+        self.data = np.concatenate([self.data, data[:, None]], axis=1)
+
+    # Returns True iff all categorical values fall within the range specified in the metadata
+    def check_cats(self, quiet:bool=False) -> bool:
+        n = self.meta.axis or 0
+        for j in range(len(self.meta.cats)):
+            if not self.meta.is_continuous(j):
+                slice_tuple = (slice(None),) * n + (slice(j, j + 1),) + (slice(None),) * (self.rank() - n - 1)
+                s = self.data[slice_tuple]
+                if np.nanmin(s) < 0:
+                    if not quiet:
+                        print(f'Out of range categorical value in attribute {self.meta.names[j]}')
+                    return False
+                if np.nanmax(s) >= len(self.meta.cats[j]):
+                    if not quiet:
+                        print(f'Out of range categorical value in attribute {self.meta.names[j]}')
+                    return False
+        return True
+
 
 
 
@@ -981,11 +1009,22 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
     t = Tensor(np.full((len(obs), len(names)), np.nan), MetaData(1, names))
     for r, ob in enumerate(obs):
         for c, k in enumerate(names):
+            numeric = False
             if k in ob:
-                if isinstance(ob[k], str):
+                if ob[k] is None:
+                    t.data[r, c] = np.nan
+                elif isinstance(ob[k], str):
+                    if numeric:
+                        raise ValueError(f'The {k} attribute contains both strings and numbers')
                     t.insert_string((r, c), ob[k])
+                elif np.isnan(ob[k]):
+                    t.data[r, c] = np.nan
                 else:
+                    if len(t.meta.cats[c]) > 0:
+                        raise ValueError(f'The {k} attribute contains strings and numbers')
                     t.data[r, c] = ob[k]
+                    numeric = True
+    assert t.check_cats()
     return t
 
 # Loads from a JSON format that is a list of list of values
@@ -1170,6 +1209,10 @@ def align(tensors: List['Tensor'], template: Optional[MetaData] = None) -> List[
         if(len(tensors) < 2):
             return tensors
     n = tensors[0].meta.axis or 0
+
+    # Check that all the incoming categorical values fall within expected ranges
+    for t in tensors:
+        assert t.check_cats(), 'bad data'
 
     # Check if they are already aligned
     already_aligned = True
