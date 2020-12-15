@@ -2,7 +2,7 @@
 # WTFPL, CC0, Apache 2.0, MIT, BSD 3-clause, MPL 2.0, GPL2.0, GPL3.0, LGPL, CDDL1.0, EPL1.0.
 # So pick your favorite license, do what you want, and have fun!
 
-from typing import cast, Union, Dict, Mapping, Optional, Tuple, Any, List, Sequence
+from typing import cast, Union, Dict, Mapping, Optional, Tuple, Any, List, Sequence, TextIO
 import numpy as np
 import pandas as pd
 import scipy.io.arff as arff
@@ -10,6 +10,7 @@ import copy
 import json
 import datetime
 import os
+import sys
 
 
 def sort_order(l: List[Any]) -> List[int]:
@@ -873,23 +874,27 @@ class Tensor():
         return Tensor(np.nanstd(self.data, axis=axis), self.meta.reduce('std', axis))
 
     # Prints in CSV format with column names in the first row
-    def print_csv(self) -> None:
+    def print_csv(self, stream:TextIO=sys.stdout) -> None:
         if self.rank() != 2 or self.meta.axis != 1:
             raise ValueError('Expected a rank 2 tensor with meta axis 1')
-        print(self.meta.names[0], end='')
+        print(self.meta.names[0], end='', file=stream)
         for v in self.meta.names[1:]:
-            print(',' + v, end='')
-        print()
+            print(',' + v, end='', file=stream)
+        print(file=stream)
         for y in range(self.data.shape[0]):
             if not np.isnan(self.data[y, 0]):
-                print(self.get_string(y, 0), end='')
+                print(self.get_string(y, 0), end='', file=stream)
             for x in range(1, self.data.shape[1]):
                 if np.isnan(self.data[y, x]):
-                    print(',', end='')
+                    print(',', end='', file=stream)
                 else:
-                    print(',' + self.get_string(y, x), end='')
-            print()
+                    print(',' + self.get_string(y, x), end='', file=stream)
+            print(file=stream)
 
+    # Saves to a file in CSV format
+    def save_csv(self, filename: str) -> None:
+        with open(filename, 'w') as f:
+            self.print_csv(stream=f)
 
     # Add a column of data
     def add_column(self, data: np.ndarray, name: str, cats: Optional[List[str]] = None) -> None:
@@ -1024,7 +1029,7 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
                         raise ValueError(f'The {k} attribute contains strings and numbers')
                     t.data[r, c] = ob[k]
                     numeric = True
-    assert t.check_cats()
+    assert t.check_cats(), 'cat problem'
     return t
 
 # Loads from a JSON format that is a list of list of values
@@ -1212,7 +1217,7 @@ def align(tensors: List['Tensor'], template: Optional[MetaData] = None) -> List[
 
     # Check that all the incoming categorical values fall within expected ranges
     for t in tensors:
-        assert t.check_cats(), 'bad data'
+        assert t.check_cats(), 'Attempted to align data with broken meta information'
 
     # Check if they are already aligned
     already_aligned = True
