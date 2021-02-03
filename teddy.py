@@ -11,6 +11,7 @@ import json
 import datetime
 import os
 import sys
+import csv
 
 
 def sort_order(l: List[Any]) -> List[int]:
@@ -35,7 +36,7 @@ class MetaData(object):
         self.axis = axis
         self.names = list(names) if names else []
         if len(set(self.names)) < len(self.names):
-            raise ValueError('Duplicate attribute names!')
+            raise ValueError(f'Duplicate attribute names: {self.names}!')
         self.cats = [ list(c) for c in cats ] if cats else [ [] for _ in range(len(self.names)) ]
         self.types = list(types) if types else [ None for _ in range(len(self.names)) ]
         if axis is None and (len(self.names) > 1 or len(self.cats) > 1 or len(self.types) > 1):
@@ -47,6 +48,7 @@ class MetaData(object):
                 t[attr_cats[i]] = i
             self.cat_to_enum.append(t)
 
+    # Marshalls the meta-data into plain-old-data
     def marshall(self) -> Mapping[str, Any]:
         return {
             'axis': self.axis,
@@ -55,6 +57,7 @@ class MetaData(object):
             'types': self.types,
         }
 
+    # Unmarshalls the meta data from plain-old-data
     @staticmethod
     def unmarshall(ob: Mapping[str, Any]) -> 'MetaData':
         return MetaData(ob['axis'], ob['names'], ob['cats'], ob['types'])
@@ -230,6 +233,14 @@ class MetaData(object):
                 return True
         return False
 
+    # Returns a list of tuples that specify the original attribute and value corresponding
+    # with the attributes in a one-hot encoding of a tensor with this meta data
+    def one_hot_map(self) -> List[Tuple[int, int]]:
+        cat_map: List[Tuple[int, int]] = []
+        for i in range(len(self.names)):
+            cat_map += [(i, j) for j in range(1 if len(self.cats[i]) < 3 else len(self.cats[i]))]
+        return cat_map
+
 
 
 
@@ -256,7 +267,7 @@ class Tensor():
         # Check that the data and metadata line up
         if self.meta.axis is not None:
             if not isinstance(self.data, np.ndarray):
-                raise ValueError(f'Data of type {type(data)}. Tried to attach meta data to axis {self.meta.axis}')
+                raise ValueError(f'Expected a np.ndarray. Got a {type(data)}.')
             if self.meta.axis >= len(self.data.shape):
                 raise ValueError(f'Data has only {len(self.data.shape)} axes, but caller specified to attach meta data to axis {self.meta.axis}')
 
@@ -269,6 +280,18 @@ class Tensor():
         while len(self.meta.cats) < attr_count:
             self.meta.cats.append([])
             self.meta.cat_to_enum.append({})
+
+    # Marshalls this tensor into plain-old-data
+    def marshall(self) -> Mapping[str, Any]:
+        return {
+            'meta': self.meta.marshall(),
+            'data': self.data.tolist(),
+        }
+
+    # Unmarshalls this tensor from plain-old-data
+    @staticmethod
+    def unmarshall(ob: Mapping[str, Any]) -> 'Tensor':
+        return Tensor(np.array(ob['data']), MetaData.unmarshall(ob['meta']))
 
     # Returns a deep copy of this tensor
     def deepcopy(self) -> 'Tensor':
@@ -341,7 +364,7 @@ class Tensor():
             if attr == dims - 2:
                 max_row_name_len = 12
                 rowname = self.meta.names[coords[dims - 2]]
-                if len(rowname) > max_row_name_len: rowname = colname[:max_row_name_len]
+                if len(rowname) > max_row_name_len: rowname = rowname[:max_row_name_len]
                 if len(rowname) < max_row_name_len: rowname = ' ' * (max_row_name_len - len(rowname)) + rowname
                 s += rowname + ':'
 
@@ -817,13 +840,13 @@ class Tensor():
 
         return obs, meta
 
+    # Converts this tensor to a JSON string
+    def to_json(self) -> str:
+        return json.dumps(self.marshall())
+
     # Writes this tensor to a file in JSON format
     def save_json(self, filename: str) -> None:
-        ob = {
-            'meta': self.meta.marshall(),
-            'data': self.data.tolist(),
-        }
-        b = bytes(json.dumps(ob), 'utf8')
+        b = bytes(self.to_json(), 'utf8')
         with open(filename, mode='wb+') as file:
             file.write(b)
 
@@ -1039,7 +1062,7 @@ def from_list_of_dict(obs: List[Mapping[str, Any]]) -> Tensor:
 #   [ 1, 'cat' ]], None)
 # Example with type hints:
 # ([[ 2, 'dog' ],
-#   [ 1, 'cat' ]], [{'quantity':'float', 'animal':'str'])
+#   [ 1, 'cat' ]], [{'name': 'quantity', 'type':'float'}, {'name':'animal', 'type':'str'}])
 def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, Optional[str]]]]]) -> Tensor:
     obs = lol[0]
     cols = lol[1]
@@ -1052,8 +1075,7 @@ def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, Opt
     if cols is not None:
         i = 0
         for attr in cols:
-            name = attr['name']
-            assert name, 'no name?'
+            name = attr['name'] or ''
             names.append(name)
             cats.append([])
             type = attr['type']
@@ -1097,41 +1119,64 @@ def from_list_of_list(lol: Tuple[List[List[Any]], Optional[List[Mapping[str, Opt
     return t
 
 # Loads a CSV file. Returns a Tensor.
-def load_csv(filename: str, column_names_in_first_row: bool = True) -> Tensor:
+def load_csv(filename: str, column_names_in_first_row:bool=True) -> Tensor:
+    # Load the file
+    raw: List[List[str]] = []
     with open(filename, 'r') as f:
-        names: List[str] = []
-        if column_names_in_first_row:
-            line = f.readline()
-            if not line:
-                raise ValueError('Expected a line of column names')
-            names = [ s.strip() for s in line.split(',') ]
-        lol: List[List[Any]] = []
-        types = [-1 for n in names]
-        while True:
-            line = f.readline()
-            if not line:
-                break
-            vals: List[Any] = []
-            for i, s in enumerate(line.split(',')):
-                if i >= len(types):
+        iter = csv.reader(f)
+        for line in iter:
+            raw.append(list(line))
+
+    # Parse the column names
+    row = 0
+    names: List[str] = []
+    if column_names_in_first_row:
+        if len(raw) < 1:
+            raise ValueError('Expected a line of column names')
+        names = raw[0]
+        row += 1
+    else:
+        names = [ f'col_{i}' for i in range(len(raw[0])) ]
+
+    # Determine the types. (It's numeric if every cell in the column can be interpreted as a number)
+    types: List[bool] = []
+    type_hints: List[Mapping[str, Optional[str]]] = []
+    for c in range(len(names)):
+        could_be_numeric = True
+        for r in range(1 if column_names_in_first_row else 0, len(raw)):
+            s = raw[r][c]
+            if s == '' or s == 'NaN' or s == 'nan' or s == '?':
+                pass
+            else:
+                try:
+                    float(s)
+                except:
+                    could_be_numeric = False
                     break
-                s = s.strip()
-                if s == '' or s == 'NaN' or s == 'nan':
-                    vals.append(np.nan)
-                elif types[i] == 0:
+        types.append(could_be_numeric)
+        type_hints.append({ 'name': names[c], 'type': 'float' if could_be_numeric else 'str' })
+
+    # Parse the data
+    lol: List[List[Any]] = []
+    while row < len(raw):
+        vals: List[Any] = []
+        for i, s in enumerate(raw[row]):
+            if i >= len(names):
+                break # Silently ignore extra columns
+            if s == '' or s == 'NaN' or s == 'nan' or s == '?':
+                vals.append(np.nan)
+            elif types[i]:
+                try:
                     vals.append(float(s))
-                elif types[i] > 0:
-                    vals.append(s)
-                else:
-                    try:
-                        vals.append(float(s))
-                        types[i] = 0
-                    except:
-                        vals.append(s)
-                        types[i] = 1
-            if len(vals) > 0:
-                lol.append(vals)
-    t = from_list_of_list((lol, None))
+                except:
+                    raise ValueError(f'row {row+1}, col{i+1}: Expected float. Got {s}')
+            else:
+                vals.append(s)
+        if len(vals) > 0:
+            assert len(vals) == len(names), f'Expected more values in row {row+1}'
+            lol.append(vals)
+        row += 1
+    t = from_list_of_list((lol, type_hints))
     if len(names) > 0:
         t.meta.names = names
     return t
@@ -1189,8 +1234,7 @@ def load_json_list_of_dict(filename: str) -> Tensor:
 
 # Parses JSON from a string
 def parse_json(s: Union[str, bytes]) -> Tensor:
-    ob = json.loads(s)
-    return Tensor(np.array(ob['data']), MetaData.unmarshall(ob['meta']))
+    return Tensor.unmarshall(json.loads(s))
 
 # Loads from a JSON file
 def load_json(filename: str) -> Tensor:
