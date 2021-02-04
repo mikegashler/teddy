@@ -185,6 +185,14 @@ class MetaData(object):
                 return MetaData(self.axis, self.names[args], self.cats[args], self.types[args])
             else:
                 return self # Nothing to change
+        elif isinstance(args, list): # List for axis 0
+            if self.axis is not None and self.axis > 0:
+                return self
+            elif self.axis is not None and self.axis == 0:
+                #return MetaData(0, self.names[args], [self.cats[args]], [self.types[args]])
+                raise ValueError('Sorry, indexing the meta axis with a list is not yet supported')
+            else:
+                return self # Nothing to change
         else: # Index axis 0
             if self.axis is not None and self.axis > 0:
                 return MetaData(self.axis - 1, self.names, self.cats, self.types) # Drop first axis
